@@ -1,3 +1,5 @@
+import * as account from './account.js';
+
 const $ = (sel) => document.querySelector(sel);
 
 const settings = {
@@ -74,13 +76,31 @@ function addFiles(files) {
   pump();
 }
 
-function pump() {
+async function pump() {
   if (busy || !modelReady) return;
   const id = queue.shift();
   if (id === undefined) return updateToolbar();
   const item = items.get(id);
   if (!item) return pump();
   busy = true;
+
+  // Günlük haktan düş; limit dolduysa sıradaki görselleri de beklet.
+  const quota = await account.consume(1);
+  if (!items.has(id)) { busy = false; return pump(); }
+  if (!quota.ok) {
+    busy = false;
+    item.status = 'limit';
+    setOverlay(item, quota.limit ? 'Günlük hak doldu' : quota.message);
+    if (quota.limit) {
+      for (const qid of queue.splice(0)) {
+        const q = items.get(qid);
+        if (q) { q.status = 'limit'; setOverlay(q, 'Günlük hak doldu'); }
+      }
+      setStatus(quota.message, 1);
+      account.openUpgrade(quota.message);
+    }
+    return updateToolbar();
+  }
   item.status = 'working';
   setOverlay(item, 'Arka plan siliniyor…');
   const left = queue.length;
@@ -255,16 +275,23 @@ function saveBlob(blob, name) {
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 
+// Ücretsiz pakette çıktının uzun kenarı sınırlıdır.
+const exportMaxSide = () => account.limits()?.maxSide ?? Infinity;
+
 async function downloadOne(id) {
   const item = items.get(id);
   if (item?.status !== 'done') return;
-  saveBlob(await toBlob(compose(item)), outputName(item));
+  saveBlob(await toBlob(compose(item, exportMaxSide())), outputName(item));
 }
 
 async function downloadAll() {
   const done = [...items.values()].filter((i) => i.status === 'done');
   if (!done.length) return;
   if (done.length === 1) return downloadOne([...items].find(([, i]) => i === done[0])[0]);
+  const limits = account.limits();
+  if (limits && !limits.batch) {
+    return account.openUpgrade('Toplu ZIP indirme Pro pakette. Ücretsiz pakette görselleri tek tek indirebilirsin.');
+  }
   const btn = $('#download-all');
   btn.disabled = true;
   btn.textContent = 'ZIP hazırlanıyor…';
@@ -274,7 +301,7 @@ async function downloadAll() {
     let name = outputName(item);
     for (let n = 2; used.has(name); n++) name = outputName(item).replace(/(\.\w+)$/, `-${n}$1`);
     used.add(name);
-    zip.file(name, await toBlob(compose(item)));
+    zip.file(name, await toBlob(compose(item, exportMaxSide())));
   }
   saveBlob(await zip.generateAsync({ type: 'blob' }), 'photoroot.zip');
   updateToolbar();
@@ -322,8 +349,43 @@ $('#custom-color').addEventListener('input', (e) => {
 $('#size').addEventListener('change', (e) => {
   settings.size = e.target.value;
   $('#padding-field').hidden = settings.size === 'original';
+  updateSizeHint();
   rerenderAll();
 });
+
+function updateSizeHint() {
+  const max = account.limits()?.maxSide;
+  const fits = settings.size !== 'original' && settings.size !== 'crop' && Math.max(...settings.size.split('x').map(Number)) <= (max ?? 0);
+  $('#size-hint').hidden = !max || fits;
+}
+
+function updateUsage() {
+  const limits = account.limits();
+  const el = $('#usage');
+  if (!limits || limits.dailyLimit == null) { el.hidden = true; return; }
+  const remaining = account.usage()?.remaining ?? limits.dailyLimit;
+  el.hidden = false;
+  el.innerHTML = '';
+  el.append(`Bugün kalan: ${remaining} / ${limits.dailyLimit} görsel · `);
+  const a = Object.assign(document.createElement('a'), { href: '#', textContent: 'Sınırsız için Pro' });
+  a.dataset.upgrade = 'limit';
+  el.append(a);
+}
+
+account.onChange(() => {
+  updateSizeHint();
+  updateUsage();
+  // Hak açıldıysa (ör. Pro'ya geçildi ya da yeni gün) bekleyen görselleri tekrar sıraya al.
+  const limits = account.limits();
+  const usage = account.usage();
+  if (limits && (limits.dailyLimit == null || usage?.remaining > 0)) {
+    for (const [id, item] of items) {
+      if (item.status === 'limit') { item.status = 'queued'; setOverlay(item, 'Sırada…'); queue.push(id); }
+    }
+    pump();
+  }
+});
+account.init();
 $('#padding').addEventListener('input', (e) => {
   settings.padding = Number(e.target.value);
   $('#padding-out').textContent = `%${settings.padding}`;

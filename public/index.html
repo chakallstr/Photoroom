@@ -110,7 +110,7 @@
               <li>Tüm ölçü şablonları</li>
               <li>Ürün gölgesi</li>
             </ul>
-            <a class="btn btn-primary" href="app.html">Pro'ya geç</a>
+            <a class="btn btn-primary" href="app.html?plan=pro&amp;period=monthly" data-plan-link="pro">Pro'ya geç</a>
           </div>
           <div class="card plan">
             <h3>İşletme</h3>
@@ -124,7 +124,7 @@
               <li>Öncelikli destek</li>
               <li class="soon">API erişimi (yakında)</li>
             </ul>
-            <a class="btn" href="mailto:merhaba@photoroot.app">Bize yaz</a>
+            <a class="btn" href="app.html?plan=business&amp;period=monthly" data-plan-link="business">İşletme'ye geç</a>
           </div>
         </div>
         <div class="promise">
@@ -177,6 +177,7 @@
         const mode = btn.dataset.billing;
         document.querySelectorAll('[data-billing]').forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
         document.querySelectorAll('[data-monthly]').forEach(el => { el.textContent = el.dataset[mode]; });
+        document.querySelectorAll('[data-plan-link]').forEach(a => { a.href = `app.html?plan=${a.dataset.planLink}&period=${mode}`; });
       });
     });
   </script>

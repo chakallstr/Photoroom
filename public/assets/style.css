@@ -191,3 +191,39 @@ input[type="color"] { width: 34px; height: 34px; border: 0; background: none; pa
 .icon-btn svg { width: 16px; height: 16px; }
 .icon-btn:disabled { opacity: .4; cursor: not-allowed; }
 .privacy { font-size: 13px; color: var(--muted); margin-top: 12px; }
+
+/* ---------- Hesap, pencereler, bildirimler ---------- */
+.account { display: flex; align-items: center; gap: 8px; }
+.plan-badge { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); color: var(--muted); }
+.plan-badge.paid { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); }
+.account-email { font-size: 14px; color: var(--muted); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 640px) { .account-email { display: none; } }
+.account-menu { position: relative; }
+.account-menu .menu { position: absolute; right: 0; top: calc(100% + 6px); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 6px; min-width: 220px; z-index: 20; }
+.account-menu .menu p { margin: 6px 10px 8px; font-size: 13px; color: var(--muted); }
+.account-menu .menu button { display: block; width: 100%; text-align: left; border: 0; background: none; color: var(--text); font: inherit; font-size: 14px; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.account-menu .menu button:hover { background: var(--surface-2); }
+
+.usage { font-size: 14px; margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }
+.usage a, .hint a { color: var(--brand); font-weight: 600; }
+.hint { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+
+.modal { border: 0; padding: 0; border-radius: 18px; background: var(--surface); color: var(--text); box-shadow: 0 20px 60px rgba(0,0,0,.25); width: min(460px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
+.modal::backdrop { background: rgba(10, 12, 10, .45); }
+.modal-body { position: relative; padding: 24px; display: grid; gap: 12px; }
+.modal-body h2 { margin: 0; font-size: 22px; }
+.modal-body .billing-toggle { margin: 0; justify-self: start; }
+.modal-lead { margin: 0; color: var(--muted); }
+.modal-close { position: absolute; top: 10px; right: 12px; border: 0; background: none; color: var(--muted); font-size: 26px; line-height: 1; cursor: pointer; }
+.input { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.input input { font: inherit; font-weight: 400; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; width: 100%; }
+.input input:focus { outline: 2px solid var(--brand); outline-offset: 0; border-color: var(--brand); }
+.input-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 420px) { .input-row { grid-template-columns: 1fr; } }
+fieldset { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin: 0; display: grid; gap: 10px; }
+legend { font-size: 13px; font-weight: 700; padding: 0 6px; }
+.form-error { margin: 0; color: var(--danger); font-size: 14px; }
+.upgrade-price { margin: 0; font-size: 15px; }
+.upgrade-price strong { font-size: 22px; }
+
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 12px 18px; border-radius: 12px; box-shadow: var(--shadow); z-index: 50; max-width: calc(100vw - 32px); font-size: 15px; }

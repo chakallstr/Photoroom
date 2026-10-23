@@ -16,6 +16,7 @@
       </a>
       <nav class="nav">
         <a class="hide-sm" href="index.html#fiyatlar">Fiyatlar</a>
+        <div id="account" class="account"></div>
       </nav>
     </div>
   </header>
@@ -53,6 +54,7 @@
             <option value="1600x1200">Yatay 4:3 · 1600×1200</option>
             <option value="2000x2000">Büyük kare · 2000×2000</option>
           </select>
+          <p class="hint" id="size-hint" hidden>Ücretsiz pakette en fazla 1080 px. <a href="#" data-upgrade="resolution">Pro ile tam çözünürlük</a></p>
         </div>
 
         <div class="field" id="padding-field">
@@ -79,6 +81,7 @@
           <button type="button" class="btn btn-primary" id="download-all" disabled>Tümünü indir (ZIP)</button>
           <button type="button" class="btn" id="clear-all" disabled>Temizle</button>
         </div>
+        <p class="usage" id="usage" hidden></p>
         <p class="privacy">🔒 Fotoğrafların cihazında işlenir, hiçbir sunucuya yüklenmez.</p>
       </aside>
 
@@ -98,6 +101,56 @@
       </section>
     </div>
   </main>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <dialog class="modal" id="auth-dialog">
+    <form method="dialog" class="modal-body" id="auth-form">
+      <button type="submit" class="modal-close" value="cancel" formnovalidate aria-label="Kapat">×</button>
+      <div class="billing-toggle" role="group" aria-label="Giriş ya da kayıt">
+        <button type="button" data-auth-mode="login" aria-pressed="true">Giriş yap</button>
+        <button type="button" data-auth-mode="register" aria-pressed="false">Hesap oluştur</button>
+      </div>
+      <p class="modal-lead" id="auth-lead">Hesabına giriş yap.</p>
+      <label class="input">E-posta<input type="email" name="email" autocomplete="email" required></label>
+      <label class="input">Şifre<input type="password" name="password" autocomplete="current-password" minlength="8" required></label>
+      <p class="form-error" id="auth-error" hidden></p>
+      <button type="submit" class="btn btn-primary" value="submit" id="auth-submit">Giriş yap</button>
+    </form>
+  </dialog>
+
+  <dialog class="modal" id="upgrade-dialog">
+    <form method="dialog" class="modal-body" id="upgrade-form">
+      <button type="submit" class="modal-close" value="cancel" formnovalidate aria-label="Kapat">×</button>
+      <h2>Pro'ya geç</h2>
+      <p class="modal-lead" id="upgrade-reason">Sınırsız görsel, tam çözünürlük ve toplu indirme.</p>
+      <div class="seg" id="upgrade-plan">
+        <button type="button" data-value="pro" aria-pressed="true">Pro</button>
+        <button type="button" data-value="business" aria-pressed="false">İşletme</button>
+      </div>
+      <div class="seg" id="upgrade-period">
+        <button type="button" data-value="monthly" aria-pressed="true">Aylık</button>
+        <button type="button" data-value="yearly" aria-pressed="false">Yıllık · 2 ay bedava</button>
+      </div>
+      <p class="upgrade-price" id="upgrade-price"></p>
+      <fieldset id="customer-fields" hidden>
+        <legend>Fatura bilgileri</legend>
+        <div class="input-row">
+          <label class="input">Ad<input name="name" autocomplete="given-name"></label>
+          <label class="input">Soyad<input name="surname" autocomplete="family-name"></label>
+        </div>
+        <div class="input-row">
+          <label class="input">Cep telefonu<input name="gsmNumber" type="tel" autocomplete="tel" placeholder="05xx xxx xx xx"></label>
+          <label class="input">TC kimlik no<input name="identityNumber" inputmode="numeric" maxlength="11"></label>
+        </div>
+        <label class="input">Şehir<input name="city" autocomplete="address-level1"></label>
+        <label class="input">Adres<input name="address" autocomplete="street-address"></label>
+      </fieldset>
+      <p class="form-error" id="upgrade-error" hidden></p>
+      <button type="submit" class="btn btn-primary" value="submit" id="upgrade-submit">Ödemeye geç</button>
+      <p class="hint">Ödeme iyzico güvencesiyle alınır. İstediğin zaman iptal edebilirsin.</p>
+    </form>
+  </dialog>
 
   <template id="item-tpl">
     <div class="item">
