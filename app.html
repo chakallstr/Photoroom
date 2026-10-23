@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Photoroot Editör</title>
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="logo" href="index.html">
+        <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="26" height="26" rx="7"/><path d="M16 24v-9"/><path d="M16 15c0-4 3-6 7-6 0 4-3 6-7 6z"/><path d="M16 18c0-3-2-5-6-5 0 3 2 5 6 5z"/></svg>
+        Photoroot
+      </a>
+      <nav class="nav">
+        <a class="hide-sm" href="index.html#fiyatlar">Fiyatlar</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="editor">
+      <aside class="panel" aria-label="Ayarlar">
+        <h2>Ayarlar</h2>
+
+        <div class="field">
+          <span class="label">Arka plan</span>
+          <div class="seg" id="bg-mode">
+            <button type="button" data-value="transparent" aria-pressed="false">Şeffaf</button>
+            <button type="button" data-value="white" aria-pressed="true">Beyaz</button>
+            <button type="button" data-value="color" aria-pressed="false">Renk</button>
+          </div>
+          <div class="swatches" id="swatches" hidden>
+            <button type="button" class="swatch" data-color="#f4efe6" style="background:#f4efe6" aria-label="Krem"></button>
+            <button type="button" class="swatch" data-color="#e8eef5" style="background:#e8eef5" aria-label="Açık mavi"></button>
+            <button type="button" class="swatch" data-color="#fde8e4" style="background:#fde8e4" aria-label="Pudra"></button>
+            <button type="button" class="swatch" data-color="#e6f2e8" style="background:#e6f2e8" aria-label="Mint"></button>
+            <button type="button" class="swatch" data-color="#1f2328" style="background:#1f2328" aria-label="Siyah"></button>
+            <input type="color" id="custom-color" value="#f4efe6" aria-label="Özel renk">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="size">Ölçü</label>
+          <select id="size">
+            <option value="original">Orijinal boyut</option>
+            <option value="crop">Ürüne göre kırp</option>
+            <option value="1080x1080" selected>Kare 1:1 · 1080×1080</option>
+            <option value="1080x1350">Dikey 4:5 · 1080×1350</option>
+            <option value="1200x1800">Dikey 2:3 · 1200×1800</option>
+            <option value="1600x1200">Yatay 4:3 · 1600×1200</option>
+            <option value="2000x2000">Büyük kare · 2000×2000</option>
+          </select>
+        </div>
+
+        <div class="field" id="padding-field">
+          <label for="padding">Kenar boşluğu</label>
+          <div class="range-row">
+            <input type="range" id="padding" min="0" max="30" value="8">
+            <output id="padding-out">%8</output>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="check"><input type="checkbox" id="shadow" checked> Ürün gölgesi</label>
+        </div>
+
+        <div class="field">
+          <span class="label">Dosya türü</span>
+          <div class="seg" id="format">
+            <button type="button" data-value="png" aria-pressed="true">PNG</button>
+            <button type="button" data-value="jpg" aria-pressed="false">JPG</button>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button type="button" class="btn btn-primary" id="download-all" disabled>Tümünü indir (ZIP)</button>
+          <button type="button" class="btn" id="clear-all" disabled>Temizle</button>
+        </div>
+        <p class="privacy">🔒 Fotoğrafların cihazında işlenir, hiçbir sunucuya yüklenmez.</p>
+      </aside>
+
+      <section aria-label="Görseller" style="padding:0">
+        <div class="status" id="status" role="status">
+          <span id="status-text">Yapay zekâ modeli hazırlanıyor…</span>
+          <div class="bar"><span id="status-bar"></span></div>
+        </div>
+
+        <label class="dropzone" id="dropzone">
+          <input type="file" id="file-input" accept="image/*" multiple hidden>
+          <strong>Fotoğrafları buraya bırak</strong>
+          <span>ya da seçmek için tıkla · JPG, PNG, WEBP · birden fazla seçebilirsin</span>
+        </label>
+
+        <div class="results" id="results"></div>
+      </section>
+    </div>
+  </main>
+
+  <template id="item-tpl">
+    <div class="item">
+      <div class="preview"><div class="overlay">Sırada…</div></div>
+      <div class="meta">
+        <span class="name"></span>
+        <div class="btns">
+          <button type="button" class="icon-btn" data-action="download" title="İndir" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>
+          </button>
+          <button type="button" class="icon-btn" data-action="remove" title="Kaldır">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script type="module" src="assets/app.js"></script>
+</body>
+</html>
