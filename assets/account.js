@@ -154,7 +154,10 @@ export function openAuth(mode = 'login', reason = '') {
   lead.dataset.reason = reason;
   lead.textContent = reason;
   setAuthMode(mode);
-  $('#auth-dialog').showModal();
+  authResolve?.(false); // önceki bekleyen çağrıyı kapat
+  const dialog = $('#auth-dialog');
+  dialog.returnValue = ''; // Esc ile kapatılınca önceki girişin 'ok' değeri kalmasın
+  if (!dialog.open) dialog.showModal();
   return new Promise((resolve) => { authResolve = resolve; });
 }
 

@@ -87,18 +87,23 @@ async function pump() {
   // Günlük haktan düş; limit dolduysa sıradaki görselleri de beklet.
   const quota = await account.consume(1);
   if (!items.has(id)) { busy = false; return pump(); }
+  if (!quota.ok && !quota.limit) {
+    // Limit dışı bir hata (ağ, sunucu): bu görseli hatalı işaretle, sıradakilerle devam et.
+    busy = false;
+    item.status = 'error';
+    setOverlay(item, quota.message);
+    return pump();
+  }
   if (!quota.ok) {
     busy = false;
     item.status = 'limit';
-    setOverlay(item, quota.limit ? 'Günlük hak doldu' : quota.message);
-    if (quota.limit) {
-      for (const qid of queue.splice(0)) {
-        const q = items.get(qid);
-        if (q) { q.status = 'limit'; setOverlay(q, 'Günlük hak doldu'); }
-      }
-      setStatus(quota.message, 1);
-      account.openUpgrade(quota.message);
+    setOverlay(item, 'Günlük hak doldu');
+    for (const qid of queue.splice(0)) {
+      const q = items.get(qid);
+      if (q) { q.status = 'limit'; setOverlay(q, 'Günlük hak doldu'); }
     }
+    setStatus(quota.message, 1);
+    account.openUpgrade(quota.message);
     return updateToolbar();
   }
   item.status = 'working';
