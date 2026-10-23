@@ -9,6 +9,7 @@ export async function startFakeIyzico({ apiKey, secretKey }) {
     checkouts: new Map(), // token -> { pricingPlanReferenceCode, result }
     subscriptions: new Map(), // ref -> { status, orders }
     failInitialize: false,
+    failRetrieveOnce: false,
   };
 
   function verifyAuth(req, path, body) {
@@ -46,7 +47,10 @@ export async function startFakeIyzico({ apiKey, secretKey }) {
         .concat(['contactName', 'city', 'country', 'address'].filter((k) => !c.billingAddress?.[k]));
       if (missing.length) return send(400, fail('5', `Eksik alan: ${missing.join(',')}`));
       const token = crypto.randomUUID();
-      state.checkouts.set(token, { pricingPlanReferenceCode: body.pricingPlanReferenceCode, result: 'ACTIVE' });
+      // Sahte sunucuda ödeme formu açılır açılmaz "ödenmiş" sayılır; abonelik iyzico tarafında oluşur.
+      const ref = 'sub-' + token.slice(0, 8);
+      state.checkouts.set(token, { pricingPlanReferenceCode: body.pricingPlanReferenceCode, result: 'ACTIVE', ref });
+      state.subscriptions.set(ref, { status: 'ACTIVE', orders: [], customerEmail: c.email });
       return send(200, {
         status: 'success', systemTime: Date.now(), token, tokenExpireTime: 1800,
         checkoutFormContent: `<script>window.__iyzicoForm = ${JSON.stringify(token)}</script>`,
@@ -55,9 +59,12 @@ export async function startFakeIyzico({ apiKey, secretKey }) {
     if (req.method === 'GET' && (m = pathname.match(/^\/v2\/subscription\/checkoutform\/([^/]+)$/))) {
       const co = state.checkouts.get(decodeURIComponent(m[1]));
       if (!co) return send(400, fail('201600', 'Token bulunamadı'));
+      if (state.failRetrieveOnce) {
+        state.failRetrieveOnce = false;
+        return send(500, fail('100001', 'Sistem hatası'));
+      }
       if (co.result !== 'ACTIVE') return send(400, fail('10051', 'Kart limiti yetersiz'));
-      const ref = 'sub-' + m[1].slice(0, 8);
-      state.subscriptions.set(ref, { status: 'ACTIVE', orders: [] });
+      const ref = co.ref;
       return send(200, {
         status: 'success', systemTime: Date.now(),
         data: { referenceCode: ref, customerReferenceCode: 'cus-1', subscriptionStatus: 'ACTIVE', pricingPlanReferenceCode: co.pricingPlanReferenceCode },
@@ -68,7 +75,7 @@ export async function startFakeIyzico({ apiKey, secretKey }) {
       if (!sub) return send(400, fail('201400', 'Abonelik bulunamadı'));
       return send(200, {
         status: 'success', systemTime: Date.now(),
-        data: { totalCount: 1, currentPage: 1, pageCount: 1, items: [{ referenceCode: m[1], subscriptionStatus: sub.status, orders: sub.orders }] },
+        data: { totalCount: 1, currentPage: 1, pageCount: 1, items: [{ referenceCode: m[1], subscriptionStatus: sub.status, customerEmail: sub.customerEmail, orders: sub.orders }] },
       });
     }
     if (req.method === 'POST' && (m = pathname.match(/^\/v2\/subscription\/subscriptions\/([^/]+)\/cancel$/))) {

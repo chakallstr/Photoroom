@@ -15,7 +15,12 @@ export function parseCookies(header = '') {
     const i = part.indexOf('=');
     if (i < 0) continue;
     const k = part.slice(0, i).trim();
-    if (k) out[k] = decodeURIComponent(part.slice(i + 1).trim());
+    if (!k) continue;
+    try {
+      out[k] = decodeURIComponent(part.slice(i + 1).trim());
+    } catch {
+      // Aynı alan adındaki başka bir uygulamanın bozuk çerezi isteği düşürmemeli.
+    }
   }
   return out;
 }
@@ -44,11 +49,26 @@ export async function readJson(req) {
   if (!type.startsWith('application/json')) throw new HttpError(415, 'json_required', 'İstek JSON olmalı.');
   const raw = await readBody(req);
   if (!raw) return {};
+  let data;
   try {
-    return JSON.parse(raw);
+    data = JSON.parse(raw);
   } catch {
     throw new HttpError(400, 'bad_json', 'Geçersiz JSON.');
   }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new HttpError(400, 'bad_json', 'İstek bir JSON nesnesi olmalı.');
+  return data;
+}
+
+// Kotada aynı kişiyi tek IP saymak için: IPv6 adresleri /64 bloğuna indirgenir
+// (bir ev ya da cihaz genelde koca bir /64 alır).
+export function ipBucket(ip) {
+  const addr = String(ip).replace(/^::ffff:(?=\d+\.)/, '');
+  if (!addr.includes(':')) return addr;
+  const [head, tail = ''] = addr.split('::');
+  const h = head ? head.split(':') : [];
+  const t = tail ? tail.split(':') : [];
+  const groups = addr.includes('::') ? [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill('0'), ...t] : h;
+  return groups.slice(0, 4).map((g) => (parseInt(g, 16) || 0).toString(16)).join(':') + '::/64';
 }
 
 export function sendJson(res, status, body, headers = {}) {
@@ -94,6 +114,6 @@ export function serveStatic(req, res, dir) {
     'Cache-Control': file.endsWith('.html') ? 'no-cache' : 'public, max-age=3600',
   });
   if (req.method === 'HEAD') return res.end(), true;
-  fs.createReadStream(file).pipe(res);
+  fs.createReadStream(file).on('error', () => res.destroy()).pipe(res);
   return true;
 }

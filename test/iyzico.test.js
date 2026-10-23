@@ -168,15 +168,56 @@ test('yenileme webhook\'u aboneliği iyzico\'daki gerçek duruma göre güncelle
   assert.equal(Date.parse((await c.get('/api/me')).data.subscription.currentPeriodEnd), paidUntil);
 });
 
-test('başarısız yenileme webhook\'unda kullanıcı ücretsize düşer', async () => {
+test('başarısız yenilemede abonelik "ödenmedi" olur, ödenen dönem + ek süre sonunda ücretsize düşer', async () => {
   const c = await registered();
   const { token } = await subscribe(c);
   await t.client().request('POST', '/api/billing/callback', { form: { token } });
   const ref = t.db.prepare('SELECT provider_ref FROM subscriptions').get().provider_ref;
+  const paidUntil = t.clock.now + 86400_000;
   fake.state.subscriptions.get(ref).status = 'UNPAID';
+  fake.state.subscriptions.get(ref).orders = [{ orderStatus: 'SUCCESS', endPeriod: paidUntil }, { orderStatus: 'FAILED', endPeriod: paidUntil + 30 * 86400_000 }];
   const r = await iyzicoWebhook({ orderReferenceCode: 'ord-3', customerReferenceCode: 'cus-1', subscriptionReferenceCode: ref, iyziEventType: 'subscription.order.failure' });
   assert.equal(r.status, 200);
+  const me = (await c.get('/api/me')).data;
+  assert.equal(me.subscription.status, 'unpaid');
+  assert.equal(Date.parse(me.subscription.currentPeriodEnd), paidUntil);
+  t.clock.now = paidUntil + 4 * 86400_000;
   assert.equal((await c.get('/api/me')).data.plan, 'free');
+});
+
+test('iyzico geçici hata verirse ödeme kaybolmaz, tekrar denemede abonelik açılır', async () => {
+  const c = await registered();
+  const { token } = await subscribe(c);
+  fake.state.failRetrieveOnce = true;
+  const first = await t.client().request('POST', '/api/billing/callback', { form: { token } });
+  assert.equal(first.headers.get('location'), '/app.html?odeme=basarisiz');
+  const retry = await t.client().request('POST', '/api/billing/callback', { form: { token } });
+  assert.equal(retry.headers.get('location'), '/app.html?odeme=basarili');
+  assert.equal((await c.get('/api/me')).data.plan, 'pro');
+});
+
+test('dönüşü hiç gelmeyen ödeme, iyzico webhook\'u gelince kullanıcıya bağlanır', async () => {
+  const c = await registered();
+  const { token } = await subscribe(c);
+  const ref = fake.state.checkouts.get(token).ref;
+  const r = await iyzicoWebhook({ orderReferenceCode: 'ord-9', customerReferenceCode: 'cus-1', subscriptionReferenceCode: ref, iyziEventType: 'subscription.order.success' });
+  assert.equal(r.status, 200);
+  assert.equal((await c.get('/api/me')).data.plan, 'pro');
+});
+
+test('hiçbir kullanıcıya ait olmayan abonelik webhook\'u işlendi sayılmaz', async () => {
+  fake.state.subscriptions.set('sub-yabanci', { status: 'ACTIVE', orders: [], customerEmail: 'yok@ornek.com' });
+  const body = { orderReferenceCode: 'o', customerReferenceCode: 'c', subscriptionReferenceCode: 'sub-yabanci', iyziEventType: 'subscription.order.success' };
+  const errors = [];
+  const orig = console.error;
+  console.error = (...a) => errors.push(a.join(' '));
+  try {
+    assert.equal((await iyzicoWebhook(body)).status, 500, 'iyzico tekrar göndersin diye 2xx dönmemeli');
+  } finally {
+    console.error = orig;
+  }
+  assert.match(errors.join('\n'), /bilinmeyen aboneliğe/);
+  assert.equal(t.db.prepare('SELECT COUNT(*) n FROM webhook_events').get().n, 0);
 });
 
 test('iptal isteği iyzico\'ya gider, dönem sonuna kadar Pro kalır', async () => {

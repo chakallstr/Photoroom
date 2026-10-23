@@ -22,7 +22,8 @@ export function loadConfig(env = process.env) {
     freeDailyLimit: env.FREE_DAILY_LIMIT != null ? int(env.FREE_DAILY_LIMIT, 10) : null,
     // IP adreslerini saklamadan saymak için kullanılan gizli değer.
     ipSalt: env.IP_SALT || 'dev-ip-salt',
-    trustProxy: env.TRUST_PROXY === '1',
+    // Önündeki güvenilen proxy sayısı (ör. Render/Fly: 1). 0 ise X-Forwarded-For yok sayılır.
+    trustProxy: Math.max(0, int(env.TRUST_PROXY, 0)),
     payments: {
       provider: env.PAYMENT_PROVIDER || (production ? 'iyzico' : 'mock'),
       iyzico: {
@@ -40,6 +41,12 @@ export function loadConfig(env = process.env) {
       },
     },
   };
+
+  // Sahte ödeme yalnızca yerelde: yanlışlıkla canlıya çıkarsa herkes ücretsiz Pro alabilirdi.
+  const local = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(config.publicUrl);
+  if (config.payments.provider === 'mock' && !local && env.ALLOW_MOCK_PAYMENTS !== '1') {
+    throw new Error('Sahte ödeme sağlayıcısı yalnızca localhost için açılabilir (PAYMENT_PROVIDER=iyzico ayarla).');
+  }
 
   if (production) {
     if (config.payments.provider === 'mock') {

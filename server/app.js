@@ -6,9 +6,12 @@ import {
 import {
   activateSubscription, applySubscriptionEvent, currentSubscription, limitsFor, planFor, subscriptionView,
 } from './billing.js';
-import { HttpError, cookie, parseCookies, readBody, readJson, redirect, sendJson, serveStatic } from './http.js';
+import { HttpError, cookie, ipBucket, parseCookies, readBody, readJson, redirect, sendJson, serveStatic } from './http.js';
 import { PERIODS, isPaidPlan } from './plans.js';
 import { consume, today, usageStatus } from './usage.js';
+
+const RECONCILE_WINDOW_MS = 86400_000;
+const RECONCILE_EVERY_MS = 2 * 60_000;
 
 export function createApp({ db, config, payments, now = () => Date.now() }) {
   const secure = config.publicUrl.startsWith('https://');
@@ -18,12 +21,15 @@ export function createApp({ db, config, payments, now = () => Date.now() }) {
 
   // ---------- Yardımcılar ----------
 
+  // İstemci X-Forwarded-For'un başına istediğini yazabilir; güvenilen proxy'ler gerçek adresi sona ekler.
+  // Bu yüzden sondan "güvenilen proxy sayısı" kadar geriye gidilir.
   function clientIp(req) {
-    if (config.trustProxy) {
-      const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
-      if (fwd) return fwd;
+    let ip = req.socket.remoteAddress || '';
+    if (config.trustProxy > 0) {
+      const hops = String(req.headers['x-forwarded-for'] || '').split(',').map((s) => s.trim()).filter(Boolean);
+      if (hops.length) ip = hops[Math.max(0, hops.length - config.trustProxy)];
     }
-    return req.socket.remoteAddress || '';
+    return ipBucket(ip);
   }
 
   function context(req, sessionToken) {
@@ -77,7 +83,13 @@ export function createApp({ db, config, payments, now = () => Date.now() }) {
 
   // ---------- Hesap ----------
 
-  route('GET', '/api/me', (req, res, ctx) => sendJson(res, 200, meBody(ctx)));
+  route('GET', '/api/me', async (req, res, ctx) => {
+    if (ctx.user && ctx.plan === 'free') {
+      await reconcilePending(ctx.user.id);
+      return sendJson(res, 200, meBody(context(req)));
+    }
+    sendJson(res, 200, meBody(ctx));
+  });
 
   route('POST', '/api/auth/register', async (req, res, ctx) => {
     const body = await readJson(req);
@@ -181,21 +193,34 @@ export function createApp({ db, config, payments, now = () => Date.now() }) {
 ${checkout.form_html}</main></body></html>`);
   });
 
-  // Ödeme sağlayıcısı kullanıcıyı buraya geri yollar (iyzico form POST'u ile).
-  // Başka siteden gelen POST'ta oturum çerezi gönderilmez; kullanıcıyı ödeme kaydından buluruz.
-  async function callback(req, res) {
-    const url = new URL(req.url, 'http://x');
-    let token = url.searchParams.get('token');
-    if (req.method === 'POST') {
-      const form = new URLSearchParams(await readBody(req));
-      token = form.get('token') || token;
-    }
-    const checkout = token && db.prepare("SELECT * FROM checkouts WHERE token = ? AND status = 'pending'").get(token);
-    if (!checkout) return redirect(res, '/app.html?odeme=gecersiz');
-    const result = await payments.completeCheckout(token, { plan: checkout.plan, period: checkout.period });
+  // Sağlayıcıdaki aboneliği iptal eder; yerelde dönem sonuna kadar geçerli kalır.
+  async function cancelAtProvider(sub) {
+    const result = await payments.cancel(sub.provider_ref).catch((err) => ({ ok: false, message: err.message }));
     if (!result.ok) {
-      db.prepare("UPDATE checkouts SET status = 'failed' WHERE token = ?").run(token);
-      return redirect(res, '/app.html?odeme=basarisiz');
+      console.error(`Abonelik iptal edilemedi (${sub.provider} ${sub.provider_ref}): ${result.message}`);
+      return false;
+    }
+    applySubscriptionEvent(db, sub.provider, { type: 'canceled', subscriptionRef: sub.provider_ref }, now());
+    return true;
+  }
+
+  // Ödemeyi sağlayıcıdan doğrular ve aboneliği açar. Kayıt önce kilitlenir; aynı ödeme
+  // eşzamanlı iki istekle iki kez işlenemez. Kesin bir ret yoksa (ağ hatası, ödeme henüz
+  // görünmüyor) kayıt beklemede kalır ve daha sonra tekrar denenebilir.
+  async function settleCheckout(token) {
+    const claimed = db.prepare("UPDATE checkouts SET status = 'processing', last_checked_at = ? WHERE token = ? AND status = 'pending'")
+      .run(now(), token).changes;
+    if (!claimed) return 'invalid';
+    const checkout = db.prepare('SELECT * FROM checkouts WHERE token = ?').get(token);
+    let result;
+    try {
+      result = await payments.completeCheckout(token, { plan: checkout.plan, period: checkout.period });
+    } catch (err) {
+      result = { ok: false, message: err.message };
+    }
+    if (!result.ok) {
+      db.prepare('UPDATE checkouts SET status = ? WHERE token = ?').run(result.final ? 'failed' : 'pending', token);
+      return 'failed';
     }
     activateSubscription(db, {
       userId: checkout.user_id,
@@ -205,8 +230,37 @@ ${checkout.form_html}</main></body></html>`);
       plan: checkout.plan,
       period: checkout.period,
     }, now());
-    db.prepare("UPDATE checkouts SET status = 'completed' WHERE token = ?").run(token);
-    redirect(res, '/app.html?odeme=basarili');
+    db.prepare("UPDATE checkouts SET status = 'completed', provider_ref = ? WHERE token = ?").run(result.subscriptionRef, token);
+    // Kullanıcının başka açık aboneliği varsa (ör. iki sekmeden ödeme) eskisini iptal et; çift çekim olmasın.
+    const others = db.prepare("SELECT * FROM subscriptions WHERE user_id = ? AND provider_ref != ? AND status IN ('active', 'unpaid')")
+      .all(checkout.user_id, result.subscriptionRef);
+    for (const sub of others) await cancelAtProvider(sub);
+    return 'completed';
+  }
+
+  // Kullanıcı ödeme yapıp dönüş sayfasına gelmeden sekmeyi kapattıysa, bekleyen ödemeler
+  // hesabına girdiğinde arka planda tekrar kontrol edilir.
+  async function reconcilePending(userId) {
+    const pending = db.prepare(`
+      SELECT token FROM checkouts
+      WHERE user_id = ? AND status = 'pending' AND created_at > ? AND created_at < ?
+        AND (last_checked_at IS NULL OR last_checked_at < ?)
+      ORDER BY created_at DESC LIMIT 3`)
+      .all(userId, now() - RECONCILE_WINDOW_MS, now() - 15_000, now() - RECONCILE_EVERY_MS);
+    for (const { token } of pending) await settleCheckout(token);
+  }
+
+  // Ödeme sağlayıcısı kullanıcıyı buraya geri yollar (iyzico form POST'u ile).
+  // Başka siteden gelen POST'ta oturum çerezi gönderilmez; kullanıcıyı ödeme kaydından buluruz.
+  async function callback(req, res) {
+    const url = new URL(req.url, 'http://x');
+    let token = url.searchParams.get('token');
+    if (req.method === 'POST') {
+      const form = new URLSearchParams(await readBody(req));
+      token = form.get('token') || token;
+    }
+    const outcome = token ? await settleCheckout(token) : 'invalid';
+    redirect(res, `/app.html?odeme=${{ completed: 'basarili', failed: 'basarisiz', invalid: 'gecersiz' }[outcome]}`);
   }
   route('GET', '/api/billing/callback', callback);
   route('POST', '/api/billing/callback', callback);
@@ -223,11 +277,24 @@ ${checkout.form_html}</main></body></html>`);
     if (event.id && db.prepare('SELECT 1 FROM webhook_events WHERE id = ?').get(event.id)) {
       return sendJson(res, 200, { ok: true, duplicate: true });
     }
+    const known = () => db.prepare('SELECT 1 FROM subscriptions WHERE provider = ? AND provider_ref = ?').get(payments.name, event.subscriptionRef);
     if (payments.fetchSubscription) {
       // Okuma başarısız olursa hata döner; iyzico bildirimi daha sonra tekrar gönderir.
       const remote = await payments.fetchSubscription(event.subscriptionRef);
       if (!remote) throw new HttpError(502, 'provider_error', 'Abonelik durumu okunamadı.');
       event.remote = remote;
+      // Bilinmeyen abonelik: ödeme alınmış ama dönüş işlenmemiş olabilir. Kullanıcının bekleyen ödemelerini doğrula.
+      if (!known() && remote.customerEmail) {
+        const user = db.prepare('SELECT id FROM users WHERE email = ?').get(remote.customerEmail);
+        const tokens = user ? db.prepare("SELECT token FROM checkouts WHERE user_id = ? AND status = 'pending' AND created_at > ?")
+          .all(user.id, now() - 7 * 86400_000) : [];
+        for (const { token } of tokens) await settleCheckout(token);
+      }
+    }
+    if (!known()) {
+      // İşlendi olarak kaydedilmez; sağlayıcı tekrar gönderir ve sorun günlükte görünür.
+      console.error(`Webhook bilinmeyen aboneliğe ait (${payments.name} ${event.subscriptionRef}); elle kontrol gerekli.`);
+      throw new HttpError(500, 'unknown_subscription', 'Abonelik bulunamadı.');
     }
     applySubscriptionEvent(db, payments.name, event, now());
     if (event.id) db.prepare('INSERT OR IGNORE INTO webhook_events (id, received_at) VALUES (?, ?)').run(event.id, now());
@@ -237,11 +304,12 @@ ${checkout.form_html}</main></body></html>`);
   route('POST', '/api/billing/cancel', async (req, res, ctx) => {
     const user = requireUser(ctx);
     await readJson(req);
-    const sub = currentSubscription(db, user.id, now());
-    if (!sub || sub.status !== 'active') throw new HttpError(404, 'no_subscription', 'İptal edilecek aktif abonelik yok.');
-    const result = await payments.cancel(sub.provider_ref);
-    if (!result.ok) throw new HttpError(502, 'provider_error', result.message || 'Ödeme sağlayıcısı iptali onaylamadı.');
-    applySubscriptionEvent(db, sub.provider, { type: 'canceled', subscriptionRef: sub.provider_ref }, now());
+    // Ödemesi alınamamış (unpaid) abonelikler de iptal edilebilmeli; yoksa sağlayıcı tekrar çekmeye çalışır.
+    const open = db.prepare("SELECT * FROM subscriptions WHERE user_id = ? AND status IN ('active', 'unpaid')").all(user.id);
+    if (!open.length) throw new HttpError(404, 'no_subscription', 'İptal edilecek abonelik yok.');
+    for (const sub of open) {
+      if (!(await cancelAtProvider(sub))) throw new HttpError(502, 'provider_error', 'Ödeme sağlayıcısı iptali onaylamadı.');
+    }
     sendJson(res, 200, meBody(context(req)));
   });
 
@@ -269,10 +337,15 @@ ${checkout.form_html}</main></body></html>`);
   // ---------- İstek işleyici ----------
 
   return async function handler(req, res) {
-    const { pathname } = new URL(req.url, 'http://x');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'same-origin');
     try {
+      let pathname;
+      try {
+        pathname = new URL(req.url, 'http://x').pathname;
+      } catch {
+        throw new HttpError(400, 'bad_url', 'Geçersiz adres.');
+      }
       const handlerFn = routes.get(`${req.method} ${pathname}`);
       if (handlerFn) {
         const external = pathname === '/api/billing/webhook' || pathname === '/api/billing/callback';

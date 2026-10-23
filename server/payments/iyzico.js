@@ -57,7 +57,10 @@ export function customerPayload(input, email) {
 }
 
 export function createIyzicoProvider({ apiKey, secretKey, merchantId, baseUrl, plans, publicUrl, fetch: fetchFn = fetch }) {
-  if (!apiKey || !secretKey) throw new Error('IYZICO_API_KEY ve IYZICO_SECRET_KEY ayarlanmalı.');
+  if (!apiKey || !secretKey || !merchantId) {
+    // merchantId olmadan webhook imzaları doğrulanamaz ve yenilemeler sessizce kaybolur.
+    throw new Error('IYZICO_API_KEY, IYZICO_SECRET_KEY ve IYZICO_MERCHANT_ID ayarlanmalı.');
+  }
 
   async function call(method, path, bodyObj) {
     const body = bodyObj === undefined ? '' : JSON.stringify(bodyObj);
@@ -71,6 +74,7 @@ export function createIyzicoProvider({ apiKey, secretKey, merchantId, baseUrl, p
         Accept: 'application/json',
       },
       body: body || undefined,
+      signal: AbortSignal.timeout(15_000),
     });
     let data;
     try {
@@ -120,8 +124,8 @@ export function createIyzicoProvider({ apiKey, secretKey, merchantId, baseUrl, p
         return { ok: false, message: data.errorMessage || 'Ödeme doğrulanamadı.' };
       }
       if (d.subscriptionStatus !== 'ACTIVE') return { ok: false, message: `Abonelik durumu: ${d.subscriptionStatus}` };
-      if (expected && d.pricingPlanReferenceCode && d.pricingPlanReferenceCode !== planCode(expected.plan, expected.period)) {
-        return { ok: false, message: 'Ödenen plan beklenen planla eşleşmiyor.' };
+      if (expected && d.pricingPlanReferenceCode !== planCode(expected.plan, expected.period)) {
+        return { ok: false, final: true, message: 'Ödenen plan beklenen planla eşleşmiyor.' };
       }
       return { ok: true, subscriptionRef: d.referenceCode, customerRef: d.customerReferenceCode };
     },
@@ -153,7 +157,11 @@ export function createIyzicoProvider({ apiKey, secretKey, merchantId, baseUrl, p
       const paidUntil = (item.orders ?? [])
         .filter((o) => o.orderStatus === 'SUCCESS' && o.endPeriod)
         .reduce((max, o) => Math.max(max, Number(o.endPeriod)), 0);
-      return { status: REMOTE_STATUS[item.subscriptionStatus] ?? 'unpaid', currentPeriodEnd: paidUntil || null };
+      return {
+        status: REMOTE_STATUS[item.subscriptionStatus] ?? 'unpaid',
+        currentPeriodEnd: paidUntil || null,
+        customerEmail: item.customerEmail ?? null,
+      };
     },
 
     async cancel(ref) {

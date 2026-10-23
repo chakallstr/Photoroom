@@ -235,13 +235,69 @@ test('yenileme webhook\'u süreyi uzatır; imzasız webhook reddedilir; tekrar g
   assert.ok(end1 > end0 + 27 * DAY && end1 < end0 + 32 * DAY, 'bir ay uzamalı (yalnızca bir kez)');
 });
 
-test('ödeme alınamazsa kullanıcı ücretsiz pakete düşer', async () => {
+test('ödeme alınamazsa ödenen dönem + ek süre sonunda ücretsize düşer', async () => {
   const c = t.client();
   await register(c);
   await subscribe(c);
   const ref = t.db.prepare('SELECT provider_ref FROM subscriptions').get().provider_ref;
   await webhook(c, { id: 'evt2', type: 'payment_failed', subscriptionRef: ref });
+  const me = (await c.get('/api/me')).data;
+  assert.equal(me.plan, 'pro', 'ödenmiş dönem bitmeden Pro kalmalı');
+  assert.equal(me.subscription.status, 'unpaid');
+  t.clock.now += 35 * DAY;
+  await relogin(c);
   assert.equal((await c.get('/api/me')).data.plan, 'free');
+});
+
+test('ödemesi alınamayan abonelik iptal edilebilir', async () => {
+  const c = t.client();
+  await register(c);
+  await subscribe(c);
+  const ref = t.db.prepare('SELECT provider_ref FROM subscriptions').get().provider_ref;
+  await webhook(c, { id: 'evt3', type: 'payment_failed', subscriptionRef: ref });
+  const r = await c.post('/api/billing/cancel', {});
+  assert.equal(r.status, 200);
+  assert.equal(r.data.subscription.status, 'canceled');
+});
+
+test('iki sekmeden iki ödeme: yeni abonelik açılır, eskisi sağlayıcıda iptal edilir', async () => {
+  const c = t.client();
+  await register(c);
+  const a = await c.post('/api/billing/checkout', { plan: 'pro', period: 'monthly' });
+  const b = await c.post('/api/billing/checkout', { plan: 'business', period: 'monthly' });
+  assert.equal(a.status, 200);
+  assert.equal(b.status, 200);
+  for (const start of [a, b]) {
+    const token = new URL(start.data.url).searchParams.get('token');
+    t.payments.setResult(token, 'success');
+    await t.client().get(`/api/billing/callback?token=${token}`);
+  }
+  const subs = t.db.prepare('SELECT plan, status FROM subscriptions ORDER BY id').all().map((s) => `${s.plan}:${s.status}`);
+  assert.deepEqual(subs, ['pro:canceled', 'business:active']);
+  assert.equal((await c.post('/api/billing/cancel', {})).status, 200);
+  assert.equal((await c.post('/api/billing/cancel', {})).status, 404, 'açık abonelik kalmamalı');
+});
+
+test('ödeme yapıp dönüş sayfasına gelmeyen kullanıcının aboneliği sonradan açılır', async () => {
+  const c = t.client();
+  await register(c);
+  const start = await c.post('/api/billing/checkout', { plan: 'pro', period: 'monthly' });
+  const token = new URL(start.data.url).searchParams.get('token');
+  t.payments.setResult(token, 'success'); // ödendi ama sekme kapandı, dönüş hiç gelmedi
+  assert.equal((await c.get('/api/me')).data.plan, 'free', 'hemen kontrol edilmez');
+  t.clock.now += 20_000;
+  assert.equal((await c.get('/api/me')).data.plan, 'pro');
+});
+
+test('aynı ödeme dönüşü eşzamanlı iki istekle iki kez işlenmez', async () => {
+  const c = t.client();
+  await register(c);
+  const start = await c.post('/api/billing/checkout', { plan: 'pro', period: 'monthly' });
+  const token = new URL(start.data.url).searchParams.get('token');
+  t.payments.setResult(token, 'success');
+  const results = await Promise.all([1, 2].map(() => t.client().get(`/api/billing/callback?token=${token}`)));
+  const locations = results.map((r) => r.headers.get('location')).sort();
+  assert.deepEqual(locations, ['/app.html?odeme=basarili', '/app.html?odeme=gecersiz']);
 });
 
 test('süresi biten ve yenilenmeyen abonelik (ek süre sonrası) ücretsize döner', async () => {
@@ -267,6 +323,28 @@ test('iptal edilen abonelik dönem sonuna kadar geçerli kalır', async () => {
   await relogin(c);
   assert.equal((await c.get('/api/me')).data.plan, 'free');
   assert.equal((await c.post('/api/billing/cancel', {})).status, 404);
+});
+
+// ---------- Bozuk istekler ----------
+
+test('bozuk istekler sunucuyu düşürmez ve 500 vermez', async () => {
+  const net = await import('node:net');
+  const port = new URL(t.base).port;
+  const raw = await new Promise((resolve) => {
+    const sock = net.connect(port, '127.0.0.1', () => sock.write('GET // HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n'));
+    let data = '';
+    sock.on('data', (d) => { data += d; });
+    sock.on('end', () => resolve(data));
+  });
+  assert.match(raw, /^HTTP\/1\.1 400/);
+  const c = t.client();
+  assert.equal((await c.get('/api/me')).status, 200, 'sunucu ayakta kalmalı');
+  for (const path of ['/api/usage', '/api/auth/login', '/api/auth/register']) {
+    const r = await c.request('POST', path, { raw: 'null', headers: { 'content-type': 'application/json' } });
+    assert.equal(r.status, 400, path);
+  }
+  const badCookie = await c.get('/api/me', { headers: { cookie: 'other=%E0%A4%A' } });
+  assert.equal(badCookie.status, 200);
 });
 
 // ---------- Statik dosyalar ----------

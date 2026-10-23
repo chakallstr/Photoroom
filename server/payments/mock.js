@@ -27,7 +27,9 @@ export function createMockProvider({ publicUrl }) {
     async completeCheckout(token) {
       const result = results.get(token);
       results.delete(token);
-      if (result !== 'success') return { ok: false, message: 'Ödeme onaylanmadı.' };
+      // Kart reddi kesindir; sonuç yoksa ödeme henüz yapılmamıştır (beklemede kalır).
+      if (result === 'failure') return { ok: false, final: true, message: 'Kart reddedildi.' };
+      if (result !== 'success') return { ok: false, message: 'Ödeme henüz yapılmadı.' };
       return { ok: true, subscriptionRef: 'mocksub_' + token.slice(5), customerRef: 'mockcus_' + token.slice(5) };
     },
 

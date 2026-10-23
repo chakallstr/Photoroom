@@ -13,6 +13,9 @@ server.listen(config.port, () => {
   console.log(`Photoroot çalışıyor: ${config.publicUrl} (ödeme: ${payments.name})`);
 });
 
+// Son savunma hattı: beklenmeyen bir hata tüm sunucuyu düşürmesin.
+process.on('unhandledRejection', (err) => console.error('Yakalanmamış hata:', err));
+
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => server.close(() => { db.close(); process.exit(0); }));
 }

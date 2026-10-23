@@ -1,7 +1,7 @@
 import { PLANS, limitsFor } from './plans.js';
 
 const DAY = 86400_000;
-// Yenileme ödemesi gecikirse kullanıcı birkaç gün daha ücretli pakette kalır.
+// Yenileme ödemesi gecikir ya da alınamazsa (sağlayıcı tekrar dener) kullanıcı birkaç gün daha ücretli pakette kalır.
 const GRACE_MS = 3 * DAY;
 const RANK = { free: 0, pro: 1, business: 2 };
 
@@ -13,7 +13,7 @@ export function addPeriod(from, period) {
 }
 
 function isEffective(sub, now) {
-  if (sub.status === 'active') return sub.current_period_end + GRACE_MS > now;
+  if (sub.status === 'active' || sub.status === 'unpaid') return sub.current_period_end + GRACE_MS > now;
   if (sub.status === 'canceled') return sub.current_period_end > now;
   return false;
 }
@@ -45,7 +45,7 @@ export function activateSubscription(db, { userId, provider, providerRef, custom
   db.prepare(`
     INSERT INTO subscriptions (user_id, provider, provider_ref, customer_ref, plan, period, status, current_period_end, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
-    ON CONFLICT (provider, provider_ref) DO UPDATE SET status = 'active', updated_at = excluded.updated_at`)
+    ON CONFLICT (provider, provider_ref) DO NOTHING`)
     .run(userId, provider, providerRef, customerRef ?? null, plan, period, addPeriod(now, period), now, now);
 }
 

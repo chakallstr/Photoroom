@@ -56,7 +56,16 @@ Paket tanımlarının tek kaynağı `server/plans.js`.
 | `POST /api/billing/cancel` | Aboneliği iptal eder (dönem sonuna kadar geçerli) |
 
 Güvenlik: `HttpOnly` + `SameSite=Lax` çerezler; POST istekleri yalnızca JSON kabul eder ve `Origin` kontrol edilir (CSRF);
-giriş denemeleri sınırlıdır; çerez silerek ek hak alınmasın diye IP başına da (gizli tuzla özetlenmiş) sınır vardır.
+giriş denemeleri sınırlıdır; çerez silerek ek hak alınmasın diye IP başına da (gizli tuzla özetlenmiş, IPv6'da /64) sınır vardır.
+Sahte ödeme sağlayıcısı yalnızca `localhost` adresinde açılır.
+
+Abonelik kuralları:
+- Ödeme dönüşü iyzico'dan doğrulanmadan abonelik açılmaz; aynı dönüş iki kez işlenemez.
+- iyzico geçici hata verirse ödeme beklemede kalır; kullanıcı sekmeyi kapatsa bile hesabına girdiğinde
+  ya da iyzico bildirimi geldiğinde ödeme tekrar kontrol edilip abonelik açılır.
+- Aynı kullanıcı iki ödeme yaparsa yeni abonelik açılır, eskisi iyzico'da iptal edilir (çift çekim olmaz).
+- Yenileme ödemesi alınamazsa kullanıcı ödediği dönemin sonu + 3 gün boyunca paketinde kalır.
+- İptal edilen abonelik dönem sonuna kadar geçerlidir; ödemesi alınamamış abonelikler de iptal edilebilir.
 
 ## iyzico'ya bağlanma
 

@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS checkouts (
   period     TEXT NOT NULL,
   status     TEXT NOT NULL DEFAULT 'pending',
   form_html  TEXT,
+  provider_ref TEXT,
+  last_checked_at INTEGER,
   created_at INTEGER NOT NULL
 );
 
@@ -63,7 +65,16 @@ export function openDb(file) {
   const db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
   db.exec(SCHEMA);
+  migrate(db);
   return db;
+}
+
+// Eski veritabanlarına sonradan eklenen sütunları ekler.
+function migrate(db) {
+  const columns = (table) => new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
+  const checkouts = columns('checkouts');
+  if (!checkouts.has('provider_ref')) db.exec('ALTER TABLE checkouts ADD COLUMN provider_ref TEXT');
+  if (!checkouts.has('last_checked_at')) db.exec('ALTER TABLE checkouts ADD COLUMN last_checked_at INTEGER');
 }
 
 export function transaction(db, fn) {
