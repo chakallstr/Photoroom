@@ -94,6 +94,12 @@ Sandbox'ta mutlaka doğrulanması gerekenler (dokümanda belirsiz ya da çelişk
 Şifre sıfırlama, satın alma (sipariş özeti + mesafeli satış sözleşmesinin tam metni), iptal, ödeme alınamadı
 ve hesap silindi e-postaları gönderilir. Metinler `server/emails.js` içinde. Geliştirmede e-postalar konsola yazılır.
 
+## Vektör (SVG) çevirme
+
+Logo, ikon ve çizimler için görselden SVG'ye çevirme tarayıcıda yapılır (VTracer, kaynaktan WASM'a derlenmiş).
+Kayıpsız mod orijinalle piksel piksel aynı çıktı verir ve her çıktı verilmeden önce doğrulanır.
+Kendin denemek için: `/vektor-lab.html`. Ölçümler ve kanıt: `docs/vektor-kanit.md`.
+
 ## Yayına alma (Render)
 
 1. Render'da **New → Blueprint** ile bu repoyu seç; `render.yaml` servisi ve 1 GB kalıcı diski oluşturur.

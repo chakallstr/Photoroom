@@ -89,6 +89,9 @@ const TYPES = {
   '.png': 'image/png',
   '.ico': 'image/x-icon',
   '.json': 'application/json',
+  '.wasm': 'application/wasm',
+  '.jpg': 'image/jpeg',
+  '.webp': 'image/webp',
 };
 
 export function serveStatic(req, res, dir) {

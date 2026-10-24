@@ -411,6 +411,9 @@ test('statik sayfalar sunulur, klasör dışına çıkılamaz', async () => {
   assert.match(home.data, /Photoroot/);
   assert.equal((await c.get('/app.html')).status, 200);
   assert.equal((await c.get('/assets/app.js')).status, 200);
+  const wasm = await c.get('/assets/vendor/vtracer/vtracer_bg.wasm');
+  assert.equal(wasm.status, 200);
+  assert.equal(wasm.headers.get('content-type'), 'application/wasm', 'tarayıcı WASM akışlı derlemeyi ancak bu türle yapar');
   assert.equal((await c.get('/../package.json')).status, 404);
   assert.equal((await c.get('/%2e%2e/package.json')).status, 404);
   assert.equal((await c.get('/api/yok')).status, 404);

@@ -9,6 +9,13 @@ Evet, ölçülebilir tanımıyla: 12 test çıktısının tamamı üç bağıms�
 logo/çizimlerde vektör orijinalle şekil olarak %99–100 örtüşüyor. Ayrıca her çıktı, kullanıcıya verilmeden önce
 sitede `validateSvg` ile denetlenir; geçemeyen çıktı hiç verilmez.
 
+## Kendin dene: `vektor-lab.html`
+
+Kanıtı okumak yerine görmek için sitede **`/vektor-lab.html`** sayfası var (tek dosyalık, internetsiz sürümü
+`python3 tools/vector-proof/build-single.py cikti.html` ile üretilir). Kendi görselini yükler, SVG'yi indirir ve
+sağ panelde SVG'nin **kendi tarayıcında** geri çizilip orijinalle piksel piksel karşılaştırılmasını görürsün: farklı
+piksel sayısı, fark haritası (kırmızı = farklı), doğrulama kontrolleri, 1x/4x/8x yakınlaştırma ile yan yana görünüm.
+
 ## Kayıpsız mod: orijinalle piksel piksel aynı (0 piksel fark)
 
 Pürüzsüz eğrili modlar (Logo / Çizim / Detaylı) şekli sadeleştirir; bulanık kenar piksellerini birebir
