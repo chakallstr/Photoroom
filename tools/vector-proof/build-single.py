@@ -28,6 +28,8 @@ html = html[:start] + glue_inline + '\n' + vec_inline + boot + html[end:]
 html = html.replace("const SAMPLE = 'assets/ornek-logo.jpg';", f"const SAMPLE = 'data:image/jpeg;base64,{sample}';")
 html = html.replace('<link rel="icon" href="assets/logo.svg" type="image/svg+xml">\n', '')
 html = html.replace('<p>Kendi görselini yükle', '<p>Bu dosya tek başına çalışır: indirip çift tıklayarak açabilirsin, internet gerekmez. Kendi görselini yükle')
+# Tek dosyada AI netleştirme yok (işçi, çalışma zamanı ve 21 MB model ayrı dosyalar ister)
+html = html.replace('<label class="check" id="sharpenWrap"', '<label class="check" id="sharpenWrap" hidden')
 if len(sys.argv) > 2 and sys.argv[2] == '--artifact':
     html = re.sub(r'^<!doctype html>\s*<html[^>]*>\s*<head>\s*', '', html, flags=re.I)
     html = html.replace('</head>\n<body>\n', '\n').replace('</body>\n</html>\n', '\n')

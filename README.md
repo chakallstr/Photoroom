@@ -102,6 +102,15 @@ birkaç tonla boyanır (`public/assets/gradients.js`). Kayıpsız mod orijinalle
 her çıktı verilmeden önce doğrulanır.
 Kendin denemek için: `/vektor-lab.html`. Ölçümler ve kanıt: `docs/vektor-kanit.md`.
 
+## AI netleştirme (4× büyütme)
+
+Küçük ya da bulanık görseller için isteğe bağlı adım: waifu2x `swin_unet` "art" 4× modeli (nunif, MIT;
+`public/assets/vendor/waifu2x/`) tarayıcıda onnxruntime-web ile çalışır; görsel hiçbir yere gönderilmez.
+Editörde "AI netleştir" seçeneği kesilmiş ürünü büyütür; vektör laboratuvarında vektör bu netleştirilmiş görselden
+çekilir (küçük çizimlerde kontur ve ayrıntı belirgin biçimde iyileşir). WebGPU varsa birkaç saniye, yoksa WASM'de
+küçük görselde 20–30 s sürer; 1 megapikselden büyük girdilerde atlanır. Veri hazırlığı `public/assets/upscale.js`
+(testli), model çalıştırma `public/assets/upscale-worker.js`.
+
 ## Yayına alma (Render)
 
 1. Render'da **New → Blueprint** ile bu repoyu seç; `render.yaml` servisi ve 1 GB kalıcı diski oluşturur.

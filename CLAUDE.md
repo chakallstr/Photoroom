@@ -9,6 +9,8 @@
   Tarayıcı tarafı derleme adımı olmadan çalışır; dış kütüphaneler yalnızca CDN'den, sabit sürümle yüklenir.
   İstisna: VTracer kaynaktan WASM'a derlenip `public/assets/vendor/vtracer/` altında tutulur
   (kaynak ve derleme: `tools/vtracer-wasm/build.sh`; değiştirirsen yeniden derle ve `cargo test` çalıştır).
+  İkinci istisna: waifu2x ONNX modeli (MIT) `public/assets/vendor/waifu2x/` altında; onnxruntime-web CDN'den sabit
+  sürümle yüklenir (`public/assets/upscale-worker.js`).
 - Vektör çıktısı kullanıcıya verilmeden önce `validateSvg` ile denetlenir; kayıpsız modda ayrıca `verifyExact`
   ile piksel piksel doğrulanır. Bu denetimleri atlama.
   Ayrıntılar ve ölçümler: `docs/vektor-kanit.md`.

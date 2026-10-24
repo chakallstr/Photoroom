@@ -92,6 +92,7 @@ textarea { width: 100%; height: 110px; font: 12px/1.4 var(--mono); background: v
       </div>
     </div>
     <label class="check"><input type="checkbox" id="cutout"> Kesim katmanı (Cricut / lazer)</label>
+    <label class="check" id="sharpenWrap" title="waifu2x (açık kaynak, MIT) ile 4× büyütüp netleştirir; küçük ve bulanık görsellerde vektör çok daha temiz çıkar. Görsel bilgisayardan çıkmaz."><input type="checkbox" id="sharpen"> AI netleştir (4×, küçük görseller için)</label>
     <div style="display:grid;gap:4px">
       <span class="label">Yakınlaştırma</span>
       <div class="seg" id="zoom">
@@ -148,7 +149,48 @@ try { await V.initVectorizer(); } catch (e) { document.getElementById('status').
 /*SON*/
 const SAMPLE = 'assets/ornek-logo.jpg';
 const $ = (s) => document.querySelector(s);
-const state = { mode: 'cizim', zoom: 1, cutout: false, img: null, name: 'ornek-logo', W: 0, H: 0, src: null, svg: '' };
+const state = { mode: 'cizim', zoom: 1, cutout: false, sharpen: false, sharp: null, img: null, name: 'ornek-logo', W: 0, H: 0, src: null, svg: '' };
+
+// AI netleştirme işçisi (isteğe bağlı; tek dosyalık sürümde yok)
+let sharpenWorker = null, sharpenJob = 0;
+function sharpenImage(rgba, w, h) {
+  return new Promise((resolve, reject) => {
+    if (!sharpenWorker) {
+      sharpenWorker = new Worker(new URL('./assets/upscale-worker.js', import.meta.url), { type: 'module' });
+      sharpenWorker.onerror = (e) => setStatus('AI netleştirme işçisi başlatılamadı: ' + (e.message || 'bilinmeyen hata'), true);
+    }
+    const id = ++sharpenJob;
+    sharpenWorker.onmessage = ({ data }) => {
+      if (data.id !== id) return;
+      if (data.type === 'progress') setStatus(`AI netleştiriliyor… ${data.done}/${data.total} parça (ilk seferde 21 MB model iner)`);
+      else if (data.type === 'done') resolve(data);
+      else if (data.type === 'error') reject(new Error(data.message));
+    };
+    sharpenWorker.postMessage({ type: 'run', id, rgba: new Uint8ClampedArray(rgba), width: w, height: h });
+  });
+}
+async function applySharpen() {
+  if (!state.src || state.sharp) { run(); return; }
+  setStatus('AI netleştiriliyor… (ilk seferde 21 MB model iner)');
+  try {
+    const r = await sharpenImage(state.src, state.W, state.H);
+    state.sharp = { rgba: new Uint8Array(r.rgba.buffer), w: r.width, h: r.height, ms: r.ms, device: r.device };
+    drawOriginal();
+    run();
+  } catch (e) { state.sharpen = false; $('#sharpen').checked = false; setStatus(e.message, true); }
+}
+function drawOriginal() {
+  const c = $('#orig');
+  if (state.sharpen && state.sharp) {
+    c.width = state.sharp.w; c.height = state.sharp.h;
+    c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(state.sharp.rgba), state.sharp.w, state.sharp.h), 0, 0);
+    $('#origInfo').textContent = `${state.W}×${state.H} → AI ile ${state.sharp.w}×${state.sharp.h} (${(state.sharp.ms / 1000).toFixed(1)} s, ${state.sharp.device === 'webgpu' ? 'ekran kartı' : 'işlemci'})`;
+  } else {
+    c.width = state.W; c.height = state.H;
+    c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(state.src), state.W, state.H), 0, 0);
+    $('#origInfo').textContent = `${state.W}×${state.H}`;
+  }
+}
 
 function setStatus(t, err = false) { $('#status').textContent = t; $('#status').classList.toggle('err', err); }
 const kb = (n) => (n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(2)} MB`);
@@ -176,11 +218,10 @@ async function useImage(src, name) {
     // Test için en fazla 4 MP (daha büyükse orantılı küçültülür).
     const k = Math.min(1, Math.sqrt(4_000_000 / (W * H)));
     W = Math.max(1, Math.round(W * k)); H = Math.max(1, Math.round(H * k));
-    Object.assign(state, { img, name, W, H, src: pixelsOf(img, W, H) });
-    const c = $('#orig'); c.width = W; c.height = H;
-    c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(state.src), W, H), 0, 0);
-    $('#origInfo').textContent = `${W}×${H}${k < 1 ? ' (küçültüldü)' : ''}`;
-    run();
+    Object.assign(state, { img, name, W, H, src: pixelsOf(img, W, H), sharp: null });
+    drawOriginal();
+    if (k < 1) $('#origInfo').textContent += ' (küçültüldü)';
+    if (state.sharpen) applySharpen(); else run();
   } catch (e) { setStatus(e.message, true); }
 }
 
@@ -192,8 +233,12 @@ function run() {
     const t0 = performance.now();
     let out;
     try {
-      if (mode === 'exact') out = V.vectorizeExact(src, W, H);
-      else {
+      const sharp = state.sharpen && state.sharp ? state.sharp : null;
+      if (mode === 'exact') out = sharp ? V.vectorizeExact(sharp.rgba, sharp.w, sharp.h) : V.vectorizeExact(src, W, H);
+      else if (sharp) {
+        // Netleştirilmiş (4×) görsel doğrudan izlenir; çıktı boyutu orijinal kalır
+        out = V.vectorizePixels(sharp.rgba, sharp.w, sharp.h, { preset: mode, cutout, outWidth: W, outHeight: H, scale: sharp.w / W });
+      } else {
         const plan = V.planScale(W, H);
         const px = plan.scale === 1 ? src : pixelsOf(state.img, plan.width, plan.height);
         out = V.vectorizePixels(px, plan.width, plan.height, { preset: mode, cutout, outWidth: W, outHeight: H, scale: plan.scale });
@@ -302,6 +347,7 @@ function bindSeg(id, key, after) {
 bindSeg('#mode', 'mode', run);
 bindSeg('#zoom', 'zoom', applyZoom);
 $('#cutout').addEventListener('change', (e) => { state.cutout = e.target.checked; run(); });
+$('#sharpen').addEventListener('change', (e) => { state.sharpen = e.target.checked; drawOriginal(); if (state.sharpen) applySharpen(); else run(); });
 // İki bölmenin kaydırmasını eşle.
 let syncing = false;
 for (const [a, b] of [['#viewA', '#viewB'], ['#viewB', '#viewA']]) {

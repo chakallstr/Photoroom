@@ -90,6 +90,7 @@ const TYPES = {
   '.ico': 'image/x-icon',
   '.json': 'application/json',
   '.wasm': 'application/wasm',
+  '.onnx': 'application/octet-stream',
   '.jpg': 'image/jpeg',
   '.webp': 'image/webp',
 };

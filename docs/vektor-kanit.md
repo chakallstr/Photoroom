@@ -139,6 +139,15 @@ katman bantları ayrıca içerir). Gölgeli çizimde kalan fark: kontur dibindek
 ortak paletle boyanıyor ve orijinalden koyu/kalın görünüyor; ayrıca vektör çözünürlük eklemez, bulanık
 kaynaktaki ayrıntı (göz, diş) geri gelmez. Sonraki adım: kontur piksellerini ince çizgi olarak ayrı izlemek.
 
+### AI netleştirme ile (waifu2x)
+
+Küçük, bulanık kaynakta tracer'ın yapabileceği sınırlı: ayrıntı kaynakta yok. Vektörden önce görsel waifu2x
+swin_unet art 4× (nunif, MIT) ile büyütülünce kontur ince ve temiz, göz/diş/pençe gibi ayrıntılar geri geliyor.
+Ejderha (267 px): netleştirilmiş görselden Çizim ΔE 6,2 (yumuşak katmansız 5,6), netleştirmesiz 7,1. Gürültü
+azaltma varyantları (noise1/noise3/art_scan) arasında gözle fark yok; düz `scale4x` kullanılıyor. Tarayıcıda
+onnxruntime-web WASM tek iş parçacığıyla 267×218 → 1068×872: 23–29 s; Python onnxruntime CPU: 19 s.
+Denenen genel amaçlı Swin2SR (fotoğraf modeli) renkleri kaydırdı (ΔE 17–27), çizim için uygun değil.
+
 Yöntem, açık kaynak iki projenin yaklaşımından esinlendi ve sıfırdan yazıldı (kod kopyalanmadı):
 [KurtVonSchaeffer/vectorize](https://github.com/KurtVonSchaeffer/vectorize) (bölge → düzlem/paraboloit uydurma,
 RMS/açıklanan varyans kabulü) ve [RidhuanDEV/png-to-svg-vectorize](https://github.com/RidhuanDEV/png-to-svg-vectorize)
