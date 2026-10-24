@@ -823,12 +823,31 @@ export function vectorizePixels(rgba, width, height, { preset = 'logo', cutout =
   return { svg, stats: check.stats, warnings };
 }
 
+// Renk seviyesi azaltma (posterize): her kanal 2^bits seviyeye yuvarlanır (seviye ortası). Kayıpsız izlemede yol
+// sayısını sınırlar: AI ile netleştirilmiş 4× görselde 5 bit (32 seviye/kanal) → ~2.500 renk, orijinale göre
+// belirgin fark %1,8 (ölçüm: docs/vektor-kanit.md). Saydam pikseller değişmez.
+export function posterize(rgba, bits = 5) {
+  const step = 256 >> bits, half = step >> 1;
+  const out = new Uint8Array(rgba.length);
+  for (let i = 0; i < rgba.length; i += 4) {
+    if (rgba[i + 3] < 128) { out[i + 3] = 0; continue; }
+    out[i] = Math.min(255, (rgba[i] - rgba[i] % step) + half);
+    out[i + 1] = Math.min(255, (rgba[i + 1] - rgba[i + 1] % step) + half);
+    out[i + 2] = Math.min(255, (rgba[i + 2] - rgba[i + 2] % step) + half);
+    out[i + 3] = 255;
+  }
+  return out;
+}
+
 // Kayıpsız (piksel kusursuz) vektör: her renk bölgesi piksel kenarları boyunca tam sayı koordinatlarla
 // izlenir. Orijinal boyutta çizildiğinde her piksel orijinalle aynıdır (Chromium ve resvg ile doğrulandı:
 // docs/vektor-kanit.md). Büyütüldüğünde kenarlar piksel basamaklıdır; pürüzsüz eğri istenirse diğer ayarlar.
-export function vectorizeExact(rgba, width, height) {
+// colorBits verilirse önce renk seviyeleri azaltılır (posterize) ve kayıpsızlık bu azaltılmış görsele göredir
+// ("yüksek sadakat": netleştirilmiş 4× görsel için).
+export function vectorizeExact(rgba, width, height, { colorBits } = {}) {
   if (!wasm) throw new Error('Vektör motoru yüklenmedi (initVectorizer).');
-  const pixels = rgba instanceof Uint8Array ? rgba : new Uint8Array(rgba.buffer, rgba.byteOffset, rgba.byteLength);
+  let pixels = rgba instanceof Uint8Array ? rgba : new Uint8Array(rgba.buffer, rgba.byteOffset, rgba.byteLength);
+  if (colorBits) pixels = posterize(pixels, colorBits);
   const svg = wasm.vectorize_exact(pixels, width, height);
   const check = validateSvg(svg);
   if (!check.ok) throw new Error('Vektör çıktısı doğrulanamadı: ' + check.errors.slice(0, 3).join('; '));
@@ -838,7 +857,8 @@ export function vectorizeExact(rgba, width, height) {
   // Garanti: SVG'yi geri çizip orijinalle piksel piksel karşılaştır; tek fark bile varsa çıktı verilmez.
   const diff = verifyExact(svg, pixels, width, height);
   if (diff) throw new Error(`Kayıpsız vektör doğrulanamadı: ${diff}`);
-  return { svg, stats: check.stats, warnings: [] };
+  const warnings = colorBits ? [`Renkler kanal başına ${1 << colorBits} seviyeye yuvarlandı; çıktı bu yuvarlanmış görselle piksel piksel aynı.`] : [];
+  return { svg, stats: check.stats, warnings };
 }
 
 // Kayıpsız SVG'yi (yalnızca tam sayı H/V kenarlı yollar) piksel merkezlerinde, nonzero kuralıyla geri çizer ve
