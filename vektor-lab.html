@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Photoroot Vektör Testi</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+<style>
+/* Yerleşim: üstte kontrol şeridi, altında iki bölme (orijinal | SVG), sağda doğrulama paneli; dar ekranda tek sütun. */
+:root {
+  --bg: #fbfaf7; --surface: #ffffff; --surface-2: #f2f0ea; --text: #1c1f1a; --muted: #62685e; --border: #e2ded4;
+  --brand: #2f7d4f; --brand-ink: #ffffff; --brand-soft: #e3f1e8; --ok: #2f7d4f; --bad: #b4412f; --bad-soft: #f8e4df;
+  --checker-a: #ffffff; --checker-b: #e9e6de;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #141613; --surface: #1c1f1b; --surface-2: #252923; --text: #ecefe8; --muted: #a3aa9e; --border: #30352e;
+  --brand: #58b07c; --brand-ink: #0f1a13; --brand-soft: #1f3327; --ok: #6cc18f; --bad: #e0715f; --bad-soft: #3a211c;
+  --checker-a: #2a2e28; --checker-b: #20231f; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #141613; --surface: #1c1f1b; --surface-2: #252923; --text: #ecefe8; --muted: #a3aa9e; --border: #30352e;
+  --brand: #58b07c; --brand-ink: #0f1a13; --brand-soft: #1f3327; --ok: #6cc18f; --bad: #e0715f; --bad-soft: #3a211c;
+  --checker-a: #2a2e28; --checker-b: #20231f; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 var(--font); }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 20px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 16px; }
+header h1 { font-size: clamp(22px, 3vw, 30px); margin: 0; letter-spacing: -.02em; text-wrap: balance; }
+header p { margin: 4px 0 0; color: var(--muted); max-width: 70ch; }
+.bar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; }
+.btn { font: inherit; font-weight: 600; font-size: 14px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); padding: 8px 14px; border-radius: 10px; cursor: pointer; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+.btn:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.seg { display: inline-flex; flex-wrap: wrap; gap: 4px; background: var(--surface-2); padding: 4px; border-radius: 12px; }
+.seg button { font: inherit; font-size: 14px; border: 0; background: transparent; color: var(--muted); padding: 6px 11px; border-radius: 8px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.label { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.check { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; }
+.drop { border: 2px dashed var(--border); border-radius: 14px; padding: 14px; text-align: center; color: var(--muted); font-size: 14px; }
+.drop.over { border-color: var(--brand); background: var(--brand-soft); }
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .main { grid-template-columns: minmax(0, 1fr); } }
+.panes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-width: 0; }
+@media (max-width: 640px) { .panes { grid-template-columns: 1fr; } }
+.pane { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; min-width: 0; }
+.pane h2 { margin: 0; font-size: 13px; font-weight: 700; padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; gap: 8px; }
+.pane h2 span { color: var(--muted); font-weight: 500; font-family: var(--mono); font-size: 12px; }
+.view { height: 380px; overflow: auto; background-color: var(--checker-a);
+  background-image: linear-gradient(45deg, var(--checker-b) 25%, transparent 25%), linear-gradient(-45deg, var(--checker-b) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, var(--checker-b) 75%), linear-gradient(-45deg, transparent 75%, var(--checker-b) 75%);
+  background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0; }
+.view canvas, .view img { display: block; image-rendering: pixelated; max-width: none; }
+.side { display: grid; gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; display: grid; gap: 10px; }
+.card h3 { margin: 0; font-size: 15px; }
+.verdict { border-radius: 12px; padding: 12px; font-weight: 700; display: grid; gap: 2px; }
+.verdict.ok { background: var(--brand-soft); color: var(--ok); }
+.verdict.bad { background: var(--bad-soft); color: var(--bad); }
+.verdict small { font-weight: 500; color: var(--text); }
+.big { font-size: 30px; font-family: var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+ul.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
+ul.checks li { display: grid; grid-template-columns: 20px 1fr; gap: 6px; }
+ul.checks .y { color: var(--ok); font-weight: 700; } ul.checks .n { color: var(--bad); font-weight: 700; }
+dl.stats { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin: 0; font-size: 14px; }
+dl.stats dt { color: var(--muted); } dl.stats dd { margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+.diffwrap { overflow: auto; max-height: 220px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); }
+.diffwrap canvas { display: block; max-width: 100%; image-rendering: pixelated; }
+textarea { width: 100%; height: 110px; font: 12px/1.4 var(--mono); background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 8px; resize: vertical; }
+.note { font-size: 13px; color: var(--muted); margin: 0; }
+.status { font-size: 14px; color: var(--muted); }
+.status.err { color: var(--bad); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Photoroot Vektör Testi</h1>
+    <p>Kendi görselini yükle, SVG'ye çevir ve sonucu kendin denetle. Her şey bu tarayıcıda çalışır; görselin hiçbir yere gönderilmez.
+       Sağdaki panel SVG'yi senin tarayıcında geri çizer ve orijinalle piksel piksel karşılaştırır.</p>
+  </header>
+
+  <div class="bar" role="group" aria-label="Ayarlar">
+    <div style="display:grid;gap:4px">
+      <span class="label">Mod</span>
+      <div class="seg" id="mode">
+        <button type="button" data-v="exact" aria-pressed="true" title="Orijinalle piksel piksel aynı">Kayıpsız</button>
+        <button type="button" data-v="logo" aria-pressed="false">Logo</button>
+        <button type="button" data-v="cizim" aria-pressed="false">Çizim</button>
+        <button type="button" data-v="detayli" aria-pressed="false">Detaylı</button>
+        <button type="button" data-v="siyahBeyaz" aria-pressed="false">Siyah-beyaz</button>
+      </div>
+    </div>
+    <label class="check"><input type="checkbox" id="cutout"> Kesim katmanı (Cricut / lazer)</label>
+    <div style="display:grid;gap:4px">
+      <span class="label">Yakınlaştırma</span>
+      <div class="seg" id="zoom">
+        <button type="button" data-v="1" aria-pressed="true">1x</button>
+        <button type="button" data-v="4" aria-pressed="false">4x</button>
+        <button type="button" data-v="8" aria-pressed="false">8x</button>
+      </div>
+    </div>
+    <label class="btn primary" for="file">Görsel yükle<input type="file" id="file" accept="image/*" hidden></label>
+    <span class="status" id="status" role="status">Örnek logo yükleniyor…</span>
+  </div>
+  <div class="drop" id="drop">Görseli buraya sürükle ya da kopyalayıp bu sayfaya yapıştır (Ctrl+V)</div>
+
+  <div class="main">
+    <div class="panes">
+      <section class="pane"><h2>Orijinal <span id="origInfo"></span></h2><div class="view" id="viewA"><canvas id="orig"></canvas></div></section>
+      <section class="pane"><h2>SVG <span id="svgInfo"></span></h2><div class="view" id="viewB"><img id="svgImg" alt="SVG çıktısı"></div></section>
+    </div>
+
+    <aside class="side">
+      <div class="card">
+        <h3>Doğrulama</h3>
+        <div class="verdict" id="verdict"><span class="big">–</span><small>farklı piksel</small></div>
+        <ul class="checks" id="checks"></ul>
+        <p class="note" id="explain"></p>
+      </div>
+      <div class="card">
+        <h3>Fark haritası</h3>
+        <p class="note">Kırmızı: orijinalden farklı çizilen piksel. Soluk gri: aynı.</p>
+        <div class="diffwrap"><canvas id="diff"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>Çıktı</h3>
+        <dl class="stats" id="stats"></dl>
+        <textarea id="code" readonly aria-label="SVG kodu"></textarea>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn" id="copy">SVG kodunu kopyala</button>
+          <button type="button" class="btn" id="download" data-site-only>SVG indir</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script type="module">
+/*VEKTOR-MOTORU*/
+import * as V from './assets/vector.js';
+await V.initVectorizer();
+/*SON*/
+const SAMPLE = 'assets/ornek-logo.jpg';
+const $ = (s) => document.querySelector(s);
+const state = { mode: 'exact', zoom: 1, cutout: false, img: null, name: 'ornek-logo', W: 0, H: 0, src: null, svg: '' };
+
+function setStatus(t, err = false) { $('#status').textContent = t; $('#status').classList.toggle('err', err); }
+const kb = (n) => (n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(2)} MB`);
+
+function pixelsOf(img, w, h, smooth = true) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d', { willReadFrequently: true }); x.imageSmoothingEnabled = smooth; x.imageSmoothingQuality = 'high';
+  x.drawImage(img, 0, 0, w, h);
+  return x.getImageData(0, 0, w, h).data;
+}
+const loadImage = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Görsel açılamadı.')); i.src = src; });
+
+function lab(r, g, b) {
+  const f = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  const R = f(r), G = f(g), B = f(b);
+  const t = (v) => (v > 0.008856 ? Math.cbrt(v) : 7.787 * v + 16 / 116);
+  const X = t((R * 0.4124 + G * 0.3576 + B * 0.1805) / 0.95047), Y = t(R * 0.2126 + G * 0.7152 + B * 0.0722), Z = t((R * 0.0193 + G * 0.1192 + B * 0.9505) / 1.08883);
+  return [116 * Y - 16, 500 * (X - Y), 200 * (Y - Z)];
+}
+
+async function useImage(src, name) {
+  try {
+    const img = await loadImage(src);
+    let W = img.naturalWidth, H = img.naturalHeight;
+    // Test için en fazla 4 MP (daha büyükse orantılı küçültülür).
+    const k = Math.min(1, Math.sqrt(4_000_000 / (W * H)));
+    W = Math.max(1, Math.round(W * k)); H = Math.max(1, Math.round(H * k));
+    Object.assign(state, { img, name, W, H, src: pixelsOf(img, W, H) });
+    const c = $('#orig'); c.width = W; c.height = H;
+    c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(state.src), W, H), 0, 0);
+    $('#origInfo').textContent = `${W}×${H}${k < 1 ? ' (küçültüldü)' : ''}`;
+    run();
+  } catch (e) { setStatus(e.message, true); }
+}
+
+function run() {
+  if (!state.src) return;
+  setStatus('Çevriliyor…');
+  setTimeout(() => {
+    const { W, H, src, mode, cutout } = state;
+    const t0 = performance.now();
+    let out;
+    try {
+      if (mode === 'exact') out = V.vectorizeExact(src, W, H);
+      else {
+        const plan = V.planScale(W, H);
+        const px = plan.scale === 1 ? src : pixelsOf(state.img, plan.width, plan.height);
+        out = V.vectorizePixels(px, plan.width, plan.height, { preset: mode, cutout, outWidth: W, outHeight: H, scale: plan.scale });
+      }
+    } catch (e) { setStatus(e.message, true); return; }
+    state.svg = out.svg;
+    const ms = Math.round(performance.now() - t0);
+    showSvg(out, ms);
+  }, 30);
+}
+
+async function showSvg(out, ms) {
+  const { W, H, src, mode } = state;
+  const url = URL.createObjectURL(new Blob([out.svg], { type: 'image/svg+xml' }));
+  const img = $('#svgImg');
+  await new Promise((r) => { img.onload = r; img.src = url; });
+  applyZoom();
+  // SVG'yi orijinal boyutta geri çiz ve karşılaştır.
+  const got = pixelsOf(img, W, H, false);
+  const diff = document.createElement('canvas'); const dc = $('#diff'); dc.width = W; dc.height = H;
+  const dctx = dc.getContext('2d'); const dimg = dctx.createImageData(W, H);
+  let differ = 0, union = 0, inter = 0, dE = 0, nC = 0, total = 0;
+  const lum = (d, i) => { const a = d[i + 3] / 255; return (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) * a + 255 * (1 - a); };
+  for (let i = 0; i < src.length; i += 4) {
+    let bad;
+    if (mode === 'siyahBeyaz') {
+      const da = lum(src, i) < 128, db = lum(got, i) < 128; bad = da !== db; total++;
+      if (da || db) union++; if (da && db) inter++;
+    } else {
+      const sa = src[i + 3], ga = got[i + 3];
+      if (sa === 0 && ga === 0) { bad = false; }
+      else {
+        total++;
+        const ia = sa > 127, ib = ga > 127; if (ia || ib) union++;
+        let d = 0;
+        if (ia && ib) { inter++; const p = lab(src[i], src[i + 1], src[i + 2]), q = lab(got[i], got[i + 1], got[i + 2]); d = Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]); dE += d; nC++; }
+        // Kayıpsız modda tek birimlik fark bile hata. Pürüzsüz modlarda palet renkleri ortalandığı için her
+        // piksel 1–2 birim oynar; orada ölçüt gözle görülür fark: ΔE > 2,3 (algı eşiği) ya da saydamlık değişimi.
+        bad = mode === 'exact'
+          ? (sa !== ga || src[i] !== got[i] || src[i + 1] !== got[i + 1] || src[i + 2] !== got[i + 2])
+          : (ia !== ib || d > 2.3);
+      }
+    }
+    if (bad) { differ++; dimg.data.set([220, 40, 40, 255], i); }
+    else if (mode === 'exact') { const l = lum(src, i); const v = Math.round(200 + l * 0.2); dimg.data.set([v, v, v, 255], i); continue; }
+    else { const l = lum(src, i); const v = Math.round(200 + l * 0.2); dimg.data.set([v, v, v, 255], i); }
+  }
+  dctx.putImageData(dimg, 0, 0);
+  const check = V.validateSvg(out.svg);
+  const pct = total ? (100 * differ / total) : 0;
+  const v = $('#verdict');
+  v.className = 'verdict ' + (differ === 0 ? 'ok' : 'bad');
+  const what = mode === 'exact' ? 'farklı piksel (tek birim bile)' : mode === 'siyahBeyaz' ? 'farklı piksel (koyu/açık alanlara göre)' : 'gözle görülür farklı piksel (ΔE > 2,3)';
+  v.innerHTML = `<span class="big">${differ.toLocaleString('tr-TR')}</span><small>${what}${total ? ` · %${pct.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}` : ''}</small>`;
+  const items = [
+    ['Saf vektör: yalnızca &lt;svg&gt; ve &lt;path&gt;, gömülü resim yok', !check.errors.some((e) => /saf vektör|öğe/.test(e))],
+    ['viewBox var, ölçeklenir; transform yok', !check.errors.some((e) => /viewBox|transform|width/.test(e))],
+    ['Yol verisi standarda göre geçerli (NaN/sonsuz yok)', !check.errors.some((e) => /ayrıştırılamadı|sayı/.test(e))],
+    ['Her şekil kapalı', !check.errors.some((e) => /kapanmamış/.test(e))],
+    ['Hiçbir nokta görselin dışına taşmıyor', !check.errors.some((e) => /dışında/.test(e))],
+  ];
+  if (mode === 'exact') items.push(['Piksel doğrulaması: geri çizim = orijinal', differ === 0]);
+  $('#checks').innerHTML = items.map(([t, ok]) => `<li><span class="${ok ? 'y' : 'n'}">${ok ? '✓' : '✗'}</span><span>${t}</span></li>`).join('')
+    + (check.ok ? '' : `<li><span class="n">!</span><span>${check.errors.slice(0, 3).join('; ')}</span></li>`);
+  $('#explain').textContent = mode === 'exact'
+    ? 'Kayıpsız mod: her renk bölgesi piksel kenarlarından çizilir. Orijinal boyutta her piksel aynıdır; büyütünce kenarlar orijinal gibi basamaklı görünür.'
+    : `Pürüzsüz mod: şekiller eğriyle sadeleştirilir; farklı pikseller çoğunlukla kenarlardaki bulanık geçiş pikselleridir. Şekil örtüşmesi %${(100 * (union ? inter / union : 1)).toFixed(1)}${nC ? `, ortalama renk farkı ΔE ${(dE / nC).toFixed(1)}` : ''}.`;
+  $('#stats').innerHTML = [
+    ['Yol (şekil)', check.stats.paths.toLocaleString('tr-TR')], ['Renk', check.stats.colors], ['Dosya boyutu', kb(out.svg.length)], ['Süre', `${ms} ms`],
+  ].map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('');
+  $('#svgInfo').textContent = `${W}×${H} · ${kb(out.svg.length)}`;
+  $('#code').value = out.svg.length > 200_000 ? out.svg.slice(0, 200_000) + '\n… (kısaltıldı; kopyala düğmesi tamamını kopyalar)' : out.svg;
+  setStatus(`Hazır: ${state.name}`);
+  (out.warnings || []).forEach((w) => setStatus(w));
+}
+
+function applyZoom() {
+  const z = state.zoom, { W, H } = state;
+  $('#orig').style.width = `${W * z}px`; $('#orig').style.height = `${H * z}px`;
+  $('#svgImg').style.width = `${W * z}px`; $('#svgImg').style.height = `${H * z}px`;
+  $('#svgImg').style.imageRendering = 'auto';
+}
+
+function bindSeg(id, key, after) {
+  $(id).addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-v]'); if (!b) return;
+    state[key] = key === 'zoom' ? Number(b.dataset.v) : b.dataset.v;
+    $(id).querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    after();
+  });
+}
+bindSeg('#mode', 'mode', run);
+bindSeg('#zoom', 'zoom', applyZoom);
+$('#cutout').addEventListener('change', (e) => { state.cutout = e.target.checked; run(); });
+// İki bölmenin kaydırmasını eşle.
+let syncing = false;
+for (const [a, b] of [['#viewA', '#viewB'], ['#viewB', '#viewA']]) {
+  $(a).addEventListener('scroll', () => { if (syncing) return; syncing = true; $(b).scrollLeft = $(a).scrollLeft; $(b).scrollTop = $(a).scrollTop; requestAnimationFrame(() => { syncing = false; }); });
+}
+const readFile = (file) => { if (!file || !file.type.startsWith('image/')) return; const r = new FileReader(); r.onload = () => useImage(r.result, file.name.replace(/\.[^.]+$/, '')); r.readAsDataURL(file); };
+$('#file').addEventListener('change', (e) => { readFile(e.target.files[0]); e.target.value = ''; });
+const drop = $('#drop');
+drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); readFile(e.dataTransfer.files[0]); });
+document.addEventListener('paste', (e) => readFile([...e.clipboardData.files][0]));
+$('#copy').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(state.svg); setStatus('SVG kodu kopyalandı.'); }
+  catch { $('#code').value = state.svg; $('#code').select(); setStatus('Kopyalamak için seçili metni Ctrl+C ile kopyala.'); }
+});
+$('#download').addEventListener('click', () => {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([state.svg], { type: 'image/svg+xml' }));
+  a.download = `${state.name}-${state.mode}.svg`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+});
+useImage(SAMPLE, 'ornek-logo');
+</script>
+</body>
+</html>

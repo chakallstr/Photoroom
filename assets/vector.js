@@ -31,9 +31,10 @@ export function planScale(width, height) {
 let wasm = null;
 
 // WASM modülünü yükler. Node'da `bytes` verilir; tarayıcıda dosya adresinden indirilir.
-export async function initVectorizer(bytes) {
+// `glue`: wasm-bindgen yapıştırma kodu önceden yüklenmişse (tek dosyalık sürüm) doğrudan verilir.
+export async function initVectorizer(bytes, glue) {
   if (wasm) return wasm;
-  const mod = await import('./vendor/vtracer/vtracer.js');
+  const mod = glue ?? await import('./vendor/vtracer/vtracer.js');
   if (bytes) mod.initSync({ module: bytes });
   else await mod.default({ module_or_path: new URL('./vendor/vtracer/vtracer_bg.wasm', import.meta.url) });
   wasm = mod;
