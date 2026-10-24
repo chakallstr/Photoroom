@@ -5,6 +5,8 @@
 //! yazıcısı yerine burada üretiyoruz: `viewBox` eklenir ve her yoldaki `transform="translate()"`
 //! kaldırılıp koordinatlar mutlak yazılır (kesim/lazer yazılımlarıyla uyum için).
 
+pub mod exact;
+
 use std::fmt::Write;
 use visioncortex::{CompoundPathElement, PathSimplifyMode, PointF64, PointI32};
 use vtracer::{ColorImage, ColorMode, Config, Hierarchical, SvgFile};
@@ -133,6 +135,30 @@ pub fn vectorize(
     vectorize_rgba(rgba, width, height, &o).map_err(|e| JsValue::from_str(&e))
 }
 
+/// Kayıpsız (piksel kusursuz) SVG: orijinal boyutta çizildiğinde her piksel orijinalle aynıdır.
+pub fn vectorize_exact_rgba(rgba: &[u8], width: usize, height: usize) -> Result<String, String> {
+    if width == 0 || height == 0 {
+        return Err("Görsel boş (genişlik ya da yükseklik 0).".into());
+    }
+    if rgba.len() != width * height * 4 {
+        return Err(format!("Piksel verisi boyutla uyuşmuyor: {} bayt, beklenen {}.", rgba.len(), width * height * 4));
+    }
+    if width * height > MAX_PIXELS {
+        return Err("Görsel çok büyük (en fazla 16 megapiksel).".into());
+    }
+    // Tamamen saydam piksellerin rengi anlamsızdır; hepsi tek değere indirilir (çizilmezler).
+    let mut px = rgba.to_vec();
+    for p in px.chunks_exact_mut(4) {
+        if p[3] == 0 { p.copy_from_slice(&[0, 0, 0, 0]); }
+    }
+    Ok(exact::to_svg(width, height, &exact::trace(&px, width, height)))
+}
+
+#[wasm_bindgen]
+pub fn vectorize_exact(rgba: &[u8], width: usize, height: usize) -> Result<String, JsValue> {
+    vectorize_exact_rgba(rgba, width, height).map_err(|e| JsValue::from_str(&e))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -256,6 +282,49 @@ mod tests {
         let svg = vectorize_rgba(&px, 40, 40, &opts()).unwrap();
         assert!(svg.contains("M0 0") || svg.contains("M0,0") || svg.contains("M20 0") || svg.contains("M0 20"), "{svg}");
         assert!(!svg.contains("-1"), "negatif koordinat kalmamalı: {svg}");
+    }
+
+    /// Kayıpsız mod: binlerce rastgele görselde SVG'yi kendimiz geri çiziyoruz; her piksel aynı olmalı.
+    #[test]
+    fn kayipsiz_mod_rastgele_gorsellerde_piksel_piksel_ayni() {
+        let mut seed: u64 = 0x1234_5678_9abc_def1;
+        let mut rnd = move || { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; seed };
+        for case in 0..3000 {
+            let w = 1 + (rnd() % 24) as usize;
+            let h = 1 + (rnd() % 24) as usize;
+            let ncolors = 1 + rnd() % 5;
+            let palette: Vec<[u8; 4]> = (0..ncolors).map(|_| {
+                let a = match rnd() % 4 { 0 => 0, 1 => (1 + rnd() % 254) as u8, _ => 255 };
+                [(rnd() % 256) as u8, (rnd() % 256) as u8, (rnd() % 256) as u8, a]
+            }).collect();
+            let kind = rnd() % 3;
+            let mut px = Vec::with_capacity(w * h * 4);
+            for y in 0..h { for x in 0..w {
+                let c = match kind {
+                    0 => palette[(rnd() % ncolors) as usize],                       // gürültü: çapraz değmeler bol
+                    1 => palette[((x / 2 + y / 3) as u64 % ncolors) as usize],       // desen
+                    _ => palette[if (x as i64 - w as i64 / 2).pow(2) + (y as i64 - h as i64 / 2).pow(2) < (w * h / 6) as i64 { 0 } else { (ncolors - 1) as usize }],
+                };
+                px.extend_from_slice(&c);
+            }}
+            let mut expect = px.clone();
+            for p in expect.chunks_exact_mut(4) { if p[3] == 0 { p.copy_from_slice(&[0, 0, 0, 0]); } }
+            let colors = exact::trace(&expect, w, h);
+            let got = exact::rasterize(w, h, &colors);
+            assert_eq!(got, expect, "#{case}: {w}x{h} tür={kind} piksel farkı var");
+            let svg = exact::to_svg(w, h, &colors);
+            assert!(svg.contains("viewBox") && !svg.contains("NaN"), "#{case}");
+        }
+    }
+
+    /// Delikli şekil: delik ayrı ve ters yönlü döngü olmalı (nonzero ile boşalır).
+    #[test]
+    fn kayipsiz_delik_ters_yonlu() {
+        let px = image(5, 5, |x, y| if (1..4).contains(&x) && (1..4).contains(&y) && !(x == 2 && y == 2) { [255, 0, 0, 255] } else { [255, 255, 255, 255] });
+        let colors = exact::trace(&px, 5, 5);
+        let red = colors.iter().find(|c| c.rgba == [255, 0, 0, 255]).unwrap();
+        assert_eq!(red.loops.len(), 2);
+        assert_eq!(exact::rasterize(5, 5, &colors), px);
     }
 
     #[test]

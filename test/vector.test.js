@@ -2,7 +2,7 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
-  applyPalette, findPalette, initVectorizer, otsuThreshold, parsePathData, planScale, validateSvg, vectorizePixels,
+  applyPalette, findPalette, initVectorizer, otsuThreshold, parsePathData, planScale, validateSvg, vectorizeExact, vectorizePixels, verifyExact,
 } from '../public/assets/vector.js';
 
 before(async () => {
@@ -37,6 +37,10 @@ test('saf vektör olmayan ya da hatalı SVG reddedilir', () => {
     'DOCTYPE': '<!DOCTYPE svg [<!ENTITY x "y">]>' + VALID,
     'metin içeriği': VALID.replace('<path', 'merhaba<path'),
     'oran uyuşmazlığı': VALID.replace('width="10"', 'width="40"'),
+    'bilinmeyen kök özniteliği': VALID.replace('version="1.1"', 'style="x"'),
+    'bilinmeyen path özniteliği': VALID.replace('fill=', 'stroke="#000" fill='),
+    'geçersiz fill-opacity': VALID.replace('fill=', 'fill-opacity="2" fill='),
+    'farklı shape-rendering': VALID.replace('version="1.1"', 'shape-rendering="auto"'),
   };
   for (const [name, svg] of Object.entries(cases)) {
     assert.equal(validateSvg(svg).ok, false, `${name} yakalanmalıydı`);
@@ -152,6 +156,45 @@ test('palet çıkarma ince ama gerçek renkleri korur (koyu dış çizgi)', () =
 test('logo ayarında bulanık kenar halkası oluşmaz', () => {
   const { svg } = vectorizePixels(blurredCircle(), 160, 160, { preset: 'logo' });
   assert.equal(validateSvg(svg).stats.colors, 2, svg.slice(0, 400));
+});
+
+test('kayıpsız mod: her görsel türünde geçerli SVG, yalnızca tam sayı koordinat ve H/V kenarları', () => {
+  for (const [name, [w, h, fn]] of Object.entries(IMAGES)) {
+    const { svg } = vectorizeExact(draw(w, h, fn), w, h);
+    assert.deepEqual(validateSvg(svg).errors, [], name);
+    assert.match(svg, /shape-rendering="crispEdges"/);
+    for (const m of svg.matchAll(/ d="([^"]+)"/g)) assert.match(m[1], /^(M\d+ \d+([HV]\d+)+Z)+$/, `${name}: ${m[1].slice(0, 60)}`);
+  }
+});
+
+test('kayıpsız mod: yarı saydam ve rastgele görsellerde her çıktı piksel piksel doğrulanır', () => {
+  let seed = 42;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 4294967296);
+  for (let n = 0; n < 300; n++) {
+    const w = 1 + Math.floor(rnd() * 30), h = 1 + Math.floor(rnd() * 30);
+    const pal = Array.from({ length: 1 + Math.floor(rnd() * 5) }, () => [rnd() * 256, rnd() * 256, rnd() * 256, [0, 255, 255, Math.floor(1 + rnd() * 254)][Math.floor(rnd() * 4)]].map(Math.floor));
+    const px = draw(w, h, () => pal[Math.floor(rnd() * pal.length)]);
+    const { svg } = vectorizeExact(px, w, h); // içeride verifyExact çalışır; fark olsa hata fırlatırdı
+    assert.equal(verifyExact(svg, px, w, h), null);
+  }
+});
+
+test('kayıpsız doğrulama tek piksellik bozulmayı da yakalar', () => {
+  const [w, h, fn] = IMAGES['iki renkli logo'];
+  const px = draw(w, h, fn);
+  const { svg } = vectorizeExact(px, w, h);
+  // Kırmızı dairenin bir koordinatını 1 piksel kaydır: doğrulama yakalamalı.
+  const broken = svg.replace(/(<path d="[^"]*?)H(\d+)([^"]*" fill="#E63946")/, (_, a, v, b) => `${a}H${Number(v) + 1}${b}`);
+  assert.notEqual(broken, svg);
+  assert.match(verifyExact(broken, px, w, h) ?? '', /piksel/);
+  // Görselin dışına taşan köşe de hata sayılır.
+  const outside = svg.replace(/H240/, 'H241');
+  assert.notEqual(outside, svg);
+  assert.match(verifyExact(outside, px, w, h) ?? '', /dışında/);
+  // Kaynakta tek pikselin rengini değiştir: doğrulama yakalamalı.
+  const changed = px.slice();
+  changed[(50 * w + 50) * 4] ^= 1;
+  assert.match(verifyExact(svg, changed, w, h) ?? '', /piksel \(50, 50\)/);
 });
 
 test('Otsu eşiği iki tonlu görselde tonların arasına düşer', () => {

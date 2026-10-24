@@ -9,6 +9,42 @@ Evet, ölçülebilir tanımıyla: 12 test çıktısının tamamı üç bağıms�
 logo/çizimlerde vektör orijinalle şekil olarak %99–100 örtüşüyor. Ayrıca her çıktı, kullanıcıya verilmeden önce
 sitede `validateSvg` ile denetlenir; geçemeyen çıktı hiç verilmez.
 
+## Kayıpsız mod: orijinalle piksel piksel aynı (0 piksel fark)
+
+Pürüzsüz eğrili modlar (Logo / Çizim / Detaylı) şekli sadeleştirir; bulanık kenar piksellerini birebir
+tutturamaz (eğriyle çizmenin doğası). **"1 piksel bile fark olmayacak"** şartı için ayrı bir **kayıpsız mod**
+vardır (`vectorizeExact`): aynı renkteki 4-komşu piksel bölgelerinin sınırı piksel kenarları boyunca, tam sayı
+koordinatlarla izlenir (`tools/vtracer-wasm/src/exact.rs`), kenar yumuşatma `shape-rendering="crispEdges"` ile
+kapatılır, yarı saydamlık `fill-opacity` ile kayıpsız taşınır.
+
+**Garanti mekanizması:** her kayıpsız çıktı kullanıcıya verilmeden önce tarayıcıda geri çizilip kaynakla
+piksel piksel karşılaştırılır (`verifyExact`). Tek bir piksel farklıysa, iki bölge aynı pikseli boyuyorsa ya da
+bir köşe görselin dışındaysa çıktı **verilmez**. Bu denetim test görselleriyle sınırlı değil; her yüklemede çalışır.
+
+| Görsel | Boyut | Yarı saydam piksel | Yol | Dosya | Chromium tuval 1x / 2x / 3x | Chromium gömülü SVG | resvg 1x | xmllint |
+|---|---|---|---|---|---|---|---|---|
+| Temiz logo | 771×200 | 0 | 518 | 73 KB | **0 / 0 / 0** | **0** | **0** | ✓ |
+| Bulanık logo (JPEG) | 771×200 | 0 | 13.431 | 1,0 MB | **0 / 0 / 0** | **0** | **0** | ✓ |
+| Panda | 191×169 | 0 | 8.397 | 585 KB | **0 / 0 / 0** | **0** | **0** | ✓ |
+| Pikachu | 224×224 | 0 | 12.439 | 750 KB | **0 / 0 / 0** | **0** | **0** | ✓ |
+| Anime karesi | 640×480 | 0 | 35.768 | 3,5 MB | **0 / 0 / 0** | **0** | **0** | ✓ |
+| Kitap kapağı | 403×500 | 0 | 44.755 | 3,6 MB | **0 / 0 / 0** | **0** | **0** | ✓ |
+| Kulaklık fotoğrafı | 1000×667 | 0 | 31.081 | 7,0 MB | **0 / 0 / 0** | **0** | **0** | ✓ |
+| Kupa kesimi | 1000×667 | 2.729 | 4.899 | 571 KB | **0 / 0 / 0** | **0** | 61* | ✓ |
+| Yıldız ikonu | 512×512 | 2.063 | 175 | 65 KB | **0 / 0 / 0** | **0** | 9* | ✓ |
+
+\* resvg yarı saydam pikselleri 8 bit önçarpımlı saklar; PNG'ye yazarken geri bölünce bazı piksellerde renk
+±1 yuvarlanır (saydamlık ve önçarpımlı değerler birebir aynı). Kanıt: **orijinal PNG de resvg ile çizilince
+vektörün resvg çizimiyle birebir aynı çıkıyor (0 piksel fark)**; sapma vektörden değil çizicinin kendisinden.
+
+Testler: Rust'ta 3.000 rastgele görselde (çapraz değen pikseller, yarı saydamlık, delikler dahil) kendi
+çizicimizle geri çizim = kaynak; JavaScript'te 300 rastgele görselde `verifyExact`; tek piksellik bozulmanın ve
+görsel dışına taşan köşenin yakalandığını gösteren testler.
+
+Bedeli: dosya boyutu (her farklı renk ayrı bölge). Logolarda küçük, fotoğraflarda büyük; 60.000 yolu aşan
+görsellerde (ör. ayakkabı kesimi) kayıpsız mod reddedilir ve pürüzsüz bir ayar önerilir. Büyütüldüğünde kenarlar
+orijinal gibi piksel basamaklıdır; pürüzsüz eğri isteniyorsa Logo / Çizim ayarları kullanılır.
+
 ## "Tam vektör ve hatasız" tanımı (her çıktıda otomatik denetlenir)
 
 1. **Saf vektör:** yalnızca `<svg>` ve `<path>`; gömülü resim, `data:` adresi, bağlantı, betik, stil yok.

@@ -9,7 +9,8 @@
   Tarayıcı tarafı derleme adımı olmadan çalışır; dış kütüphaneler yalnızca CDN'den, sabit sürümle yüklenir.
   İstisna: VTracer kaynaktan WASM'a derlenip `public/assets/vendor/vtracer/` altında tutulur
   (kaynak ve derleme: `tools/vtracer-wasm/build.sh`; değiştirirsen yeniden derle ve `cargo test` çalıştır).
-- Vektör çıktısı kullanıcıya verilmeden önce `validateSvg` ile denetlenir; bu denetimi atlama.
+- Vektör çıktısı kullanıcıya verilmeden önce `validateSvg` ile denetlenir; kayıpsız modda ayrıca `verifyExact`
+  ile piksel piksel doğrulanır. Bu denetimleri atlama.
   Ayrıntılar ve ölçümler: `docs/vektor-kanit.md`.
 - Paket ve fiyat tanımlarının tek kaynağı `server/plans.js`. Fiyat değişirse `public/index.html` ve
   `public/assets/account.js` (PRICES) de güncellenmeli.
