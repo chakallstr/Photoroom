@@ -411,7 +411,8 @@ async function vectorOf(item) {
   if (settings.svgMode === 'birebir') return V.vectorizeExact(rgbaOf(base), W, H);
   if (settings.svgMode === 'sadakat') {
     if (!sharp) throw new Error('"Yüksek sadakat" için önce "AI netleştir" seçeneğini aç (küçük ve orta boy görsellerde çalışır).');
-    const r = V.vectorizeExact(rgbaOf(sharp), sharp.width, sharp.height, { colorBits: 5 });
+    const fit = V.shrinkForExact(rgbaOf(sharp), sharp.width, sharp.height); // büyük görselde 2× boyut
+    const r = V.vectorizeExact(fit.rgba, fit.width, fit.height, { colorBits: 5 });
     r.svg = r.svg.replace(/ width="\d+" height="\d+"/, ` width="${W}" height="${H}"`);
     return r;
   }
