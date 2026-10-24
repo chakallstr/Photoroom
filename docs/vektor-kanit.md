@@ -150,6 +150,16 @@ ağız kırmızısı geri geldi); kenar yapıştırma yarıçapı 2·ölçek →
 tonlama bulanık kaynakta k-means'ten daha az isabetli; Çizim ayarı AI netleştirmeyle birlikte düşünülmeli).
 Logolar değişmedi (temiz logo 0,4; bulanık logo 2,7); anime 3,9 (yol 1015 → 278).
 
+### Bant başına gradyan (deneysel, laboratuvarda seçenek)
+
+Vectorizer.AI tarzı "sürekli gölge" için fikir: her eş-ışık bandına kendi doğrusal gradyanı uydurulur
+(`fitLabelFills`; renk ≈ a + b·x + c·y, kanal başına; düz renge göre kazanç ≥ %20 ise). Tüm etiketler VTracer'a
+eşsiz sahte renkle tek geçişte verilir, yollar etikete çözülüp dolgu değiştirilir. Netleştirilmiş ejderhada
+ΔE 6,5 → 5,3 (yol 132 → 356); ama panda 3,2 → 5,3, pikachu 4,2 → 5,1, temiz logo 0,4 → 1,3. Bu yüzden
+varsayılan değil; laboratuvarda "Bant gradyanı (deneysel)" kutusu (`BAND_GRADIENT_OVERRIDES`). Öğrenilen:
+VTracer kırıntı birleştirirken renkleri ortaladığı için sahte renk tam eşleşmeyebilir; en yakın etikete çözülür
+ve kırıntı eşiği düşük tutulur.
+
 ### AI netleştirme ile (waifu2x)
 
 Küçük, bulanık kaynakta tracer'ın yapabileceği sınırlı: ayrıntı kaynakta yok. Vektörden önce görsel waifu2x

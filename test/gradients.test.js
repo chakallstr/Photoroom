@@ -125,3 +125,30 @@ test('gradientDef sayıları yuvarlar ve eksi sıfır üretmez', () => {
   const d = gradientDef('g1', { kind: 'linear', x1: -0.0001, y1: 2.345678, x2: 10, y2: 0, stops: [{ offset: 0, color: [1, 2, 3] }, { offset: 1, color: [255, 255, 255] }] });
   assert.equal(d, '<linearGradient id="g1" gradientUnits="userSpaceOnUse" x1="0" y1="2.35" x2="10" y2="0"><stop offset="0" stop-color="#010203"/><stop offset="1" stop-color="#FFFFFF"/></linearGradient>');
 });
+
+test('bant dolgusu uydurma: doğrusal geçişe gradyan, düz alana düz renk, uçlar görsel içinde', async () => {
+  const { fitLabelFills, encodeLabel, decodeLabel } = await import('../public/assets/vector.js');
+  const w = 60, h = 20, rgba = new Uint8Array(w * h * 4), labels = new Int32Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const p = y * w + x, i = p * 4;
+    if (x < 30) { rgba[i] = 40 + x * 5; rgba[i + 1] = 80; rgba[i + 2] = 200 - x * 3; labels[p] = 0; } // soldan sağa geçiş
+    else { rgba[i] = 200; rgba[i + 1] = 30; rgba[i + 2] = 30; labels[p] = 1; } // düz kırmızı
+    rgba[i + 3] = 255;
+  }
+  const fills = fitLabelFills(rgba, labels, 2, w, h);
+  assert.equal(fills[0].kind, 'linear');
+  assert.ok(fills[0].x1 >= 0 && fills[0].x2 <= w && fills[0].y1 >= 0 && fills[0].y2 <= h, 'uçlar görsel içinde');
+  assert.ok(fills[0].x2 > fills[0].x1, 'yön soldan sağa');
+  assert.ok(Math.abs(fills[0].stops[0].color[0] - 40) < 8 && Math.abs(fills[0].stops[1].color[0] - 185) < 8, `uç renkleri ${fills[0].stops.map((s) => s.color)}`);
+  assert.equal(fills[1].kind, 'flat');
+  assert.deepEqual(fills[1].color, [200, 30, 30]);
+  for (const l of [0, 1, 31, 32, 1023, 5000]) assert.equal(decodeLabel('#' + encodeLabel(l).map((v) => v.toString(16).padStart(2, '0')).join('')), l);
+});
+
+test('bant gradyanı (deneysel) çıktısı doğrulanır', async () => {
+  const { BAND_GRADIENT_OVERRIDES } = await import('../public/assets/vector.js');
+  const { rgba, w, h } = sample();
+  const r = vectorizePixels(rgba, w, h, { preset: 'cizim', ...BAND_GRADIENT_OVERRIDES });
+  assert.equal(validateSvg(r.svg).ok, true);
+  assert.ok(r.stats.gradients >= 1);
+});
