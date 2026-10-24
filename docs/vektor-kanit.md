@@ -8,6 +8,8 @@ Evet, ölçülebilir tanımıyla: 12 test çıktısının tamamı üç bağıms�
 `xmllint`, `resvg`), iki farklı çizici (Chromium ve resvg) aynı sonucu verdi (en fazla %0,12 piksel farkı) ve
 logo/çizimlerde vektör orijinalle şekil olarak %99–100 örtüşüyor. Ayrıca her çıktı, kullanıcıya verilmeden önce
 sitede `validateSvg` ile denetlenir; geçemeyen çıktı hiç verilmez.
+Orijinale sadakat (belirgin fark = ΔE > 6 piksel payı, hedef ≤ %5): üründeki üç SVG türü altı görselde Birebir %0,
+Yüksek sadakat ≤ %1,4, Temiz (piksel ızgarasız çokgenler) ≤ %3,2 ("Temiz vektör: ortak kenarlı çokgenler" bölümü).
 
 ## Kendin dene: `vektor-lab.html`
 
@@ -307,6 +309,23 @@ orijinale göre CIE76):
 
 Karşılaştırma: aynı görsellerde eski Çizim modu %20–23, kullanıcının kendi SVG'si %35,5. Kalan farkın çoğu düz renge
 indirilen gölge geçişleri (hafif, ΔE 2,3–6 bandı %20–29) ve netleştirmeden keskinleşen kenarlar.
+
+**Ürün yolundan** (`urun-kanit.mjs`, üç SVG türü birden; `urun-olc.sh` ile aynı yöntem). Önce arka planı koruyarak
+(`KEEP_BG=1`, orijinal dosyaya göre), sonra olağan kesimle (ürün PNG'sine göre):
+
+| Görsel | Temiz ↔ orijinal dosya | Temiz ↔ ürün PNG (kesimli) | Temiz yol / boyut | Yüksek sadakat | Birebir |
+|---|---|---|---|---|---|
+| Ejderha 267×218 | ΔE 1,88, **%2,9** | ΔE 1,88, %2,9 | 109 / 0,2 MB | %1,4 | %0,0 |
+| Anime 640×480 | ΔE 1,93, **%0,7** | ΔE 1,91, %0,7 | 120 / 2,2 MB | %0,1 | %0,0 |
+| Panda 191×169 | ΔE 2,03, **%3,2** | ΔE 1,96, %2,9 | 85 / 0,2 MB | %1,4 | %0,0 |
+| Pikachu 224×224 | ΔE 1,61, **%2,7** | ΔE 2,34, %3,0 | 131 / 0,4 MB | %1,0 | %0,0 |
+| Temiz logo 771×200 | ΔE 0,22, **%0,5** | ΔE 0,38, %0,4 | 7 / 0,1 MB | %0,4 | %0,0 |
+| Bulanık logo 771×200 | ΔE 0,57, **%0,1** | ΔE 1,95, %0,9 | 95 / 0,6 MB | %0,0 | %0,0 |
+
+Ürünün sunduğu üç türün üçü de altı görselde hedefin (belirgin fark ≤ %5) altında; Temiz türde en kötü %3,2, yol
+sayısı Yüksek sadakate göre 20–50 kat az, dosya 5–10 kat küçük. Laboratuvarda tarayıcı içi ölçüm (Chromium, ikiye
+ikiye küçültme) ejderha için netleştirmeli %1,6, netleştirmesiz %3,6; tek dosyalık sürümde örnek logo %1,3.
+Yüksek sadakat ve Birebir değerleri önceki koşularla aynı (belirlenimci).
 
 
 ### AI netleştirme ile (waifu2x)
