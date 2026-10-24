@@ -20,7 +20,7 @@ export const PRESETS = {
 // Çıktı sınırları: Cricut Design Space en fazla 5000 yol kabul eder; çok büyük dosyalar tarayıcıyı yorar.
 // Deneysel: bant başına gradyan (fills 'fit'). Netleştirilmiş gölgeli çizimde ΔE 6,5 → 5,3; düz çizim ve
 // logolarda yol sayısını artırıp hatayı yükseltiyor, o yüzden varsayılan değil. Laboratuvarda seçenek.
-export const BAND_GRADIENT_OVERRIDES = { fills: 'fit', localColors: 8, celStep: 8, filterSpeckle: 1 };
+export const BAND_GRADIENT_OVERRIDES = { fills: 'fit', localColors: 20, celStep: 3, filterSpeckle: 1 };
 export const LIMITS = { cuttingPaths: 5000, maxPaths: 60000, maxBytes: 15_000_000, maxPixels: 4_000_000, maxGradients: 24 };
 
 // Çevirme ölçeği: kısa kenarı 600 px'ten küçük görseller (ince çizgiler korunsun diye) 4 kata kadar büyütülür,
@@ -364,15 +364,28 @@ export function fitLabelFills(rgba, labels, labelCount, width, height, { minPixe
     const t = ((p % width) + 0.5) * ux[l] + (Math.floor(p / width) + 0.5) * uy[l];
     if (t < tmin[l]) tmin[l] = t; if (t > tmax[l]) tmax[l] = t;
   }
+  // Üçüncü geçiş: uç renkleri düzlemden dışa taşırarak değil, bandın gerçek uç piksellerinden (izdüşümün ilk ve
+  // son %15'i) al; ortadaki %30'da piksel yoksa bant halka biçimlidir (ışık çevresi), doğrusal gradyan uymaz → düz.
+  const lo = new Float64Array(K * 4), hi = new Float64Array(K * 4), mid = new Float64Array(K);
+  for (let p = 0; p < labels.length; p++) {
+    const l = labels[p]; if (l < 0 || !coefs[l]) continue;
+    const t = ((p % width) + 0.5) * ux[l] + (Math.floor(p / width) + 0.5) * uy[l];
+    const f = (t - tmin[l]) / (tmax[l] - tmin[l] || 1), i = p * 4;
+    if (f <= 0.15) { lo[l * 4] += rgba[i]; lo[l * 4 + 1] += rgba[i + 1]; lo[l * 4 + 2] += rgba[i + 2]; lo[l * 4 + 3]++; }
+    else if (f >= 0.85) { hi[l * 4] += rgba[i]; hi[l * 4 + 1] += rgba[i + 1]; hi[l * 4 + 2] += rgba[i + 2]; hi[l * 4 + 3]++; }
+    if (f > 0.35 && f < 0.65) mid[l]++;
+  }
   for (let l = 0; l < K; l++) {
     if (!coefs[l]) continue;
+    if (!lo[l * 4 + 3] || !hi[l * 4 + 3] || mid[l] < n[l] * 0.1) continue; // uç ya da orta boş: düz kalsın
+    const c1 = [0, 1, 2].map((k) => Math.round(lo[l * 4 + k] / lo[l * 4 + 3])), c2 = [0, 1, 2].map((k) => Math.round(hi[l * 4 + k] / hi[l * 4 + 3]));
+    if (Math.sqrt(dist2(srgbToLab(...c1), srgbToLab(...c2))) < 4) continue; // uçlar aynı renk: düz
     const cx = Sx[l] / n[l], cy = Sy[l] / n[l], c0 = cx * ux[l] + cy * uy[l];
     // Uç noktalar görsel içinde kalsın (eğri/uzun bantta ağırlık merkezinden geçen doğru dışarı taşabilir)
     const pt = (t) => [Math.min(width, Math.max(0, cx + (t - c0) * ux[l])), Math.min(height, Math.max(0, cy + (t - c0) * uy[l]))];
-    const [x1, y1] = pt(tmin[l]), [x2, y2] = pt(tmax[l]);
+    const [x1, y1] = pt(tmin[l] + 0.075 * (tmax[l] - tmin[l])), [x2, y2] = pt(tmax[l] - 0.075 * (tmax[l] - tmin[l]));
     if (Math.hypot(x2 - x1, y2 - y1) < 1) continue;
-    const colorAt = (x, y) => coefs[l].map((s) => Math.round(Math.min(255, Math.max(0, s[0] + s[1] * x + s[2] * y))));
-    fills[l] = { kind: 'linear', x1, y1, x2, y2, stops: [{ offset: 0, color: colorAt(x1, y1) }, { offset: 1, color: colorAt(x2, y2) }] };
+    fills[l] = { kind: 'linear', x1, y1, x2, y2, stops: [{ offset: 0, color: c1 }, { offset: 1, color: c2 }] };
   }
   return fills;
 }

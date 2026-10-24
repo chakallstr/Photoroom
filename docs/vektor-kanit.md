@@ -160,6 +160,24 @@ varsayılan değil; laboratuvarda "Bant gradyanı (deneysel)" kutusu (`BAND_GRAD
 VTracer kırıntı birleştirirken renkleri ortaladığı için sahte renk tam eşleşmeyebilir; en yakın etikete çözülür
 ve kırıntı eşiği düşük tutulur.
 
+### Kullanıcı karşılaştırması (orijinal webp ↔ SVG, aynı boyutta piksel piksel)
+
+Ölçüm `tools/vector-proof` ile aynı mantık: SVG orijinal boyutta (267×218) geri çizilir, her piksel CIE76 ΔE ile
+karşılaştırılır; "belirgin fark" ΔE > 6 olan piksel payı. Kaynak: AI ile netleştirilmiş görsel.
+
+| Sürüm | Ort. ΔE | Belirgin fark | Yol |
+|---|---|---|---|
+| Kullanıcının çıktısı (ilk bant gradyanı, düzlem uçlu) | 6,80 | %35,5 | 295 |
+| Çizim (varsayılan, cel 4 ton) | 6,57 | %37,2 | 132 |
+| Bant gradyanı, uçlar gerçek piksel ortalaması, adım 8 | 5,57 | %31,3 | 356 |
+| Bant gradyanı, adım 4 | 5,08 | %27,6 | 412 |
+| **Bant gradyanı, adım 3** (BAND_GRADIENT_OVERRIDES) | **5,05** | **%27,8** | 478 |
+
+Kalan farkın büyük kısmı kenarlarda: kaynak netleştirildiği için orijinalin bulanık kenarından ΔE olarak
+uzaklaşır (netleştirilmiş görsele göre ΔE 5,0). Diğer örneklerde bant gradyanı: bulanık logo 2,75 → 2,17 daha
+iyi; panda 3,16 → 3,79, anime 3,95 → 4,26 (yol 278 → 1433), temiz logo 0,39 → 1,25 daha kötü. Bu yüzden varsayılan
+değil; laboratuvarda "AI netleştir" açılınca otomatik açılır, istenirse kapatılır.
+
 ### AI netleştirme ile (waifu2x)
 
 Küçük, bulanık kaynakta tracer'ın yapabileceği sınırlı: ayrıntı kaynakta yok. Vektörden önce görsel waifu2x

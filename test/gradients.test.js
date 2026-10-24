@@ -139,7 +139,8 @@ test('bant dolgusu uydurma: doğrusal geçişe gradyan, düz alana düz renk, u�
   assert.equal(fills[0].kind, 'linear');
   assert.ok(fills[0].x1 >= 0 && fills[0].x2 <= w && fills[0].y1 >= 0 && fills[0].y2 <= h, 'uçlar görsel içinde');
   assert.ok(fills[0].x2 > fills[0].x1, 'yön soldan sağa');
-  assert.ok(Math.abs(fills[0].stops[0].color[0] - 40) < 8 && Math.abs(fills[0].stops[1].color[0] - 185) < 8, `uç renkleri ${fills[0].stops.map((s) => s.color)}`);
+  // Uç renkleri bandın ilk/son %15 piksellerinin ortalaması: sol ≈ 40+2·5 = 50, sağ ≈ 40+27·5 = 175
+  assert.ok(Math.abs(fills[0].stops[0].color[0] - 50) < 10 && Math.abs(fills[0].stops[1].color[0] - 175) < 10, `uç renkleri ${fills[0].stops.map((s) => s.color)}`);
   assert.equal(fills[1].kind, 'flat');
   assert.deepEqual(fills[1].color, [200, 30, 30]);
   for (const l of [0, 1, 31, 32, 1023, 5000]) assert.equal(decodeLabel('#' + encodeLabel(l).map((v) => v.toString(16).padStart(2, '0')).join('')), l);
