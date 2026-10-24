@@ -97,7 +97,9 @@ ve hesap silindi e-postaları gönderilir. Metinler `server/emails.js` içinde. 
 ## Vektör (SVG) çevirme
 
 Logo, ikon ve çizimler için görselden SVG'ye çevirme tarayıcıda yapılır (VTracer, kaynaktan WASM'a derlenmiş).
-Kayıpsız mod orijinalle piksel piksel aynı çıktı verir ve her çıktı verilmeden önce doğrulanır.
+Gölgeli çizimlerde görsel bölgelere ayrılır; yumuşak geçişli bölgeler SVG gradyanıyla, diğerleri bölgeye özel
+birkaç tonla boyanır (`public/assets/gradients.js`). Kayıpsız mod orijinalle piksel piksel aynı çıktı verir ve
+her çıktı verilmeden önce doğrulanır.
 Kendin denemek için: `/vektor-lab.html`. Ölçümler ve kanıt: `docs/vektor-kanit.md`.
 
 ## Yayına alma (Render)

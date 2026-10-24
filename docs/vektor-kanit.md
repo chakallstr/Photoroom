@@ -85,6 +85,47 @@ olarak atıldı; ölçülen fark bundan. Logo tam olarak gerçek 3 rengine (beya
 Fotoğraflar ve fotoğraf benzeri ürün görselleri vektörde doğal olarak sadeleşir (ΔE 10–13); bu bir hata değil,
 vektörün doğası. Ürün sayfasında "logo, ikon ve çizimler için" diye konumlandırılmalı.
 
+## Gölgeli çizimler: bölgeye duyarlı palet ve gradyan (yeni)
+
+Tek paletle (16 renk) tüm görseli boyamak gölgeli çizimlerde iki sorun çıkarıyordu: yumuşak geçişler üst üste
+renk bantlarına bölünüyor, komşu bölgelerin tonları birbirine karışıyordu. Yeni akış (`public/assets/gradients.js`,
+`applyRegionPalette`):
+
+1. Görsel renk-sürekli **bölgelere** ayrılır (komşu farkı ≤ 6; 2·ölçek aralıklı fark > 14 olan pikseller kenardır,
+   bölgeye girmez; bu sayede 3–4× büyütmede yumuşayan kenarlar bölgeleri birleştirmez).
+2. Her bölgeye **gradyan** sığdırılır (doğrusal düzlem ya da paraboloit tepe noktalı dairesel; 48 kutuluk renk
+   profili, en fazla 8 durak). Kabul: artık hata RMS ≤ 7 ve renk değişiminin ≥ %85'i açıklanıyor. Sığmayan büyük
+   bölge daha sıkı adımla bölünüp parçaları denenir.
+3. Sığmayan bölge **kendi içinde** en az sayıda tona ayrılır (ortalama ΔE ≤ 4 olana kadar 1→4 ton): çizgi film
+   gölgelemesi gibi ana ton + gölge + ışık. Bölge dışı pikseller (kontur, küçük ayrıntı) ortak paletle boyanır;
+   ΔE < 5 yakınlıktaki tonlar birleştirilir (aynı mavi on harfte on renk olmasın).
+4. Gradyan bölgeleri ikili maske olarak ayrıca izlenir; düz çizimin üstüne `fill="url(#gN)"` ile eklenir.
+   `validateSvg` artık yalnızca başta tek `<defs>`, içinde yalnızca `linearGradient`/`radialGradient`
+   (`gradientUnits="userSpaceOnUse"`, koordinatlar görsel içinde, duraklar 0'dan 1'e sıralı, renkler `#RRGGBB`),
+   tanımsız ya da kullanılmayan gradyan yok kuralıyla denetler. Kayıpsız mod değişmedi (gradyan kullanmaz).
+
+Ölçüm (uygulamadaki gibi `planScale` büyütmesiyle; Chromium'da geri çizilip orijinalle karşılaştırıldı):
+
+| Görsel | Ayar | Eski ΔE | Yeni ΔE | Eski yol | Yeni yol | Gradyan |
+|---|---|---|---|---|---|---|
+| Ejderha çizimi (267 px, gölgeli) | Çizim | 8,8 | **6,8** | 77 | 147 | 2 |
+| Ejderha çizimi | Logo | 11,6 | **7,3** | 41 | 68 | 2 |
+| Anime karesi | Çizim | 4,8 | **3,6** | 151 | 382 | 1 |
+| Anime karesi | Logo | 7,1 | **3,7** | 58 | 151 | 1 |
+| Panda çizimi | Çizim | 3,5 | 3,3 | 23 | 19 | 0 |
+| Pikachu | Çizim | 4,3 | 4,3 | 22 | 26 | 0 |
+| Bulanık logo | Logo | 2,8 | 2,7 | 18 | 21 | 0 |
+| Temiz logo | Logo | 0,4 | 0,4 | 18 | 18 | 0 |
+
+Düz logolarda sonuç aynı (bölge tonları birleştiği için fazladan yol yok); gölgeli çizimlerde renk hatası %20–50
+düştü, yol sayısı arttı (tonlar bölgeye ait olduğu için). Gölgeli çizimde çıktı hâlâ "cel-shading" (bantlı);
+bir sonraki adım bölge içi ışık/gölge lekelerini saydam dairesel gradyanlarla (`stop-opacity`) yumuşatmak.
+
+Yöntem, açık kaynak iki projenin yaklaşımından esinlendi ve sıfırdan yazıldı (kod kopyalanmadı):
+[KurtVonSchaeffer/vectorize](https://github.com/KurtVonSchaeffer/vectorize) (bölge → düzlem/paraboloit uydurma,
+RMS/açıklanan varyans kabulü) ve [RidhuanDEV/png-to-svg-vectorize](https://github.com/RidhuanDEV/png-to-svg-vectorize)
+(MIT; çizgi film için bölge birleştirme ve gradyan).
+
 ## Test ve dayanıklılık
 
 - **Rust (köprü, `tools/vtracer-wasm`)**: 8 test; rastgele üretilmiş **2.000 görselle** (boyut, saydamlık,
