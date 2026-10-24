@@ -259,3 +259,25 @@ legend { font-size: 13px; font-weight: 700; padding: 0 6px; }
 
 .link-btn { border: 0; background: none; color: var(--brand); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; justify-self: center; padding: 4px; }
 .form-ok { margin: 0; color: var(--brand); font-size: 14px; }
+
+/* ---------- Elle rötuş ---------- */
+.modal-wide { width: min(1100px, calc(100vw - 24px)); height: min(860px, calc(100vh - 24px)); max-height: none; }
+.touchup { display: grid; grid-template-rows: auto 1fr auto; height: 100%; padding: 14px; gap: 10px; box-sizing: border-box; }
+.touchup-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.touchup-toolbar .seg { flex: none; }
+.touchup-toolbar .seg button { flex: none; padding: 7px 14px; }
+.touchup-size { min-width: 220px; flex: 1 1 220px; max-width: 320px; }
+.touchup-spacer { flex: 1; }
+.touchup-stage {
+  min-height: 0; display: grid; place-items: center; border-radius: 12px; overflow: hidden;
+  background-color: var(--checker-a);
+  background-image:
+    linear-gradient(45deg, var(--checker-b) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--checker-b) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--checker-b) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--checker-b) 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+}
+#touchup-canvas { touch-action: none; cursor: none; display: block; }
+.touchup-help { margin: 0; }

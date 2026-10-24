@@ -1,4 +1,5 @@
 import * as account from './account.js';
+import { initTouchup, openTouchup } from './touchup.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -71,6 +72,7 @@ function addFiles(files) {
     el.querySelector('.name').textContent = file.name;
     el.querySelector('[data-action="remove"]').onclick = () => removeItem(id);
     el.querySelector('[data-action="download"]').onclick = () => downloadOne(id);
+    el.querySelector('[data-action="edit"]').onclick = () => editItem(id);
     const thumb = new Image();
     thumb.src = URL.createObjectURL(file);
     thumb.style.opacity = '.45';
@@ -128,7 +130,15 @@ function onResult({ id, width, height, buffer }) {
     canvas.width = width;
     canvas.height = height;
     const data = new Uint8ClampedArray(buffer);
-    canvas.getContext('2d').putImageData(new ImageData(data, width, height), 0, 0);
+    // Modelin çıktısında renkler orijinal, yalnızca saydamlık değişmiş. Saydamlığı tam yaparak
+    // "Geri getir" fırçası için orijinal fotoğrafı birebir aynı boyut ve yönde elde ederiz.
+    const opaque = data.slice();
+    for (let i = 3; i < opaque.length; i += 4) opaque[i] = 255;
+    item.original = document.createElement('canvas');
+    item.original.width = width;
+    item.original.height = height;
+    item.original.getContext('2d').putImageData(new ImageData(opaque, width, height), 0, 0);
+    canvas.getContext('2d', { willReadFrequently: true }).putImageData(new ImageData(data, width, height), 0, 0);
     item.cutout = canvas;
     item.bbox = alphaBounds(data, width, height);
     item.status = 'done';
@@ -136,10 +146,20 @@ function onResult({ id, width, height, buffer }) {
     item.thumb.remove();
     renderPreview(item);
     item.el.querySelector('[data-action="download"]').disabled = false;
+    item.el.querySelector('[data-action="edit"]').disabled = false;
   }
   if (!queue.length) setStatus('Hazır', 1);
   updateToolbar();
   pump();
+}
+
+async function editItem(id) {
+  const item = items.get(id);
+  if (item?.status !== 'done') return;
+  if (!(await openTouchup(item))) return;
+  const { width, height } = item.cutout;
+  item.bbox = alphaBounds(item.cutout.getContext('2d').getImageData(0, 0, width, height).data, width, height);
+  renderPreview(item);
 }
 
 function onItemError(id, message) {
@@ -421,6 +441,7 @@ account.onChange(() => {
   }
 });
 account.init();
+initTouchup();
 $('#padding').addEventListener('input', (e) => {
   settings.padding = Number(e.target.value);
   $('#padding-out').textContent = `%${settings.padding}`;
