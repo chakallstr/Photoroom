@@ -7,6 +7,7 @@
 ```
 public/            Site (tanıtım + fiyat sayfası, editör)
   assets/app.js      Editör: kuyruk, kompozisyon, indirme
+  assets/touchup.js  Elle rötuş: sil / geri getir fırçası
   assets/account.js  Hesap, günlük hak, Pro'ya geçiş
   assets/worker.js   Tarayıcıda çalışan arka plan silme modeli
 server/            API (ek paket yok: node:http + node:sqlite)

@@ -213,12 +213,38 @@
     </div>
   </dialog>
 
+  <dialog class="modal modal-wide" id="touchup-dialog" aria-label="Elle düzenle">
+    <div class="touchup">
+      <div class="touchup-toolbar">
+        <div class="seg" id="touchup-tool">
+          <button type="button" data-value="erase" aria-pressed="true" title="Kısayol: E">Sil</button>
+          <button type="button" data-value="restore" aria-pressed="false" title="Kısayol: R">Geri getir</button>
+        </div>
+        <div class="range-row touchup-size">
+          <span class="hint" style="margin:0">Fırça</span>
+          <input type="range" id="touchup-size" min="4" max="300" value="40" aria-label="Fırça boyutu">
+          <output id="touchup-size-out">40 px</output>
+        </div>
+        <button type="button" class="btn btn-sm" id="touchup-undo" title="Ctrl+Z">Geri al</button>
+        <button type="button" class="btn btn-sm" id="touchup-reset">Yapay zekâ sonucuna dön</button>
+        <span class="touchup-spacer"></span>
+        <button type="button" class="btn btn-sm" id="touchup-cancel">Vazgeç</button>
+        <button type="button" class="btn btn-sm btn-primary" id="touchup-save">Kaydet</button>
+      </div>
+      <div class="touchup-stage" id="touchup-stage"><canvas id="touchup-canvas"></canvas></div>
+      <p class="hint touchup-help"><b>Sil</b> ile kalan arka planı temizle, <b>Geri getir</b> ile yanlışlıkla silinen yerleri boya. Fırça boyutu için [ ve ] tuşları.</p>
+    </div>
+  </dialog>
+
   <template id="item-tpl">
     <div class="item">
       <div class="preview"><div class="overlay">Sırada…</div></div>
       <div class="meta">
         <span class="name"></span>
         <div class="btns">
+          <button type="button" class="icon-btn" data-action="edit" title="Düzenle (sil / geri getir)" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1 10-10-3-3L5 16l-1 4z"/><path d="M13 7l3 3"/></svg>
+          </button>
           <button type="button" class="icon-btn" data-action="download" title="İndir" disabled>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>
           </button>
