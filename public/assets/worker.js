@@ -1,5 +1,6 @@
 // Arka plan silme modeli bu worker'da çalışır, böylece arayüz donmaz.
 import { pipeline, RawImage, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.1';
+import { refineMask } from './mask.js';
 
 env.allowLocalModels = false;
 
@@ -63,6 +64,8 @@ self.onmessage = async ({ data }) => {
       const image = await RawImage.fromBlob(blob);
       const [result] = await segmenter(image);
       const rgba = result.channels === 4 ? result : result.rgba();
+      // Sisli alanları ve ürüne bağlı olmayan kırıntıları temizle.
+      refineMask(rgba.data, rgba.width, rgba.height);
       const buffer = rgba.data.buffer;
       postMessage({ type: 'result', id, width: rgba.width, height: rgba.height, buffer }, [buffer]);
     } catch (err) {
