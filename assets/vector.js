@@ -255,6 +255,74 @@ export function vectorizePixels(rgba, width, height, { preset = 'logo', cutout =
   return { svg, stats: check.stats, warnings };
 }
 
+// Kayıpsız (piksel kusursuz) vektör: her renk bölgesi piksel kenarları boyunca tam sayı koordinatlarla
+// izlenir. Orijinal boyutta çizildiğinde her piksel orijinalle aynıdır (Chromium ve resvg ile doğrulandı:
+// docs/vektor-kanit.md). Büyütüldüğünde kenarlar piksel basamaklıdır; pürüzsüz eğri istenirse diğer ayarlar.
+export function vectorizeExact(rgba, width, height) {
+  if (!wasm) throw new Error('Vektör motoru yüklenmedi (initVectorizer).');
+  const pixels = rgba instanceof Uint8Array ? rgba : new Uint8Array(rgba.buffer, rgba.byteOffset, rgba.byteLength);
+  const svg = wasm.vectorize_exact(pixels, width, height);
+  const check = validateSvg(svg);
+  if (!check.ok) throw new Error('Vektör çıktısı doğrulanamadı: ' + check.errors.slice(0, 3).join('; '));
+  if (check.stats.paths > LIMITS.maxPaths || check.stats.bytes > LIMITS.maxBytes) {
+    throw new Error('Görselde çok fazla farklı renk var (fotoğraf olabilir); kayıpsız vektör çok büyük olur. "Logo" ya da "Çizim" ayarını dene.');
+  }
+  // Garanti: SVG'yi geri çizip orijinalle piksel piksel karşılaştır; tek fark bile varsa çıktı verilmez.
+  const diff = verifyExact(svg, pixels, width, height);
+  if (diff) throw new Error(`Kayıpsız vektör doğrulanamadı: ${diff}`);
+  return { svg, stats: check.stats, warnings: [] };
+}
+
+// Kayıpsız SVG'yi (yalnızca tam sayı H/V kenarlı yollar) piksel merkezlerinde, nonzero kuralıyla geri çizer ve
+// kaynakla karşılaştırır. Fark yoksa null, varsa ilk farkı anlatan metin döner. İki yolun aynı pikseli
+// boyaması da hata sayılır (bölgeler örtüşmemeli).
+export function verifyExact(svg, rgba, width, height) {
+  const out = new Uint8Array(width * height * 4);
+  const painted = new Uint8Array(width * height);
+  for (const m of svg.matchAll(/<path d="([^"]+)" fill="#([0-9A-F]{6})"(?: fill-opacity="([0-9.]+)")?\/>/g)) {
+    const r = parseInt(m[2].slice(0, 2), 16), g = parseInt(m[2].slice(2, 4), 16), b = parseInt(m[2].slice(4, 6), 16);
+    const a = m[3] === undefined ? 255 : Math.round(Number(m[3]) * 255);
+    // Dikey kenarlar: [x, yÜst, yAlt, yön]
+    const edges = [];
+    let x = 0, y = 0, sx = 0, sy = 0;
+    for (const t of m[1].matchAll(/([MHVZ])(?:(-?\d+)(?: (-?\d+))?)?/g)) {
+      if (t[1] === 'M') { x = sx = Number(t[2]); y = sy = Number(t[3]); }
+      else if (t[1] === 'H') x = Number(t[2]);
+      else if (t[1] === 'V') { const ny = Number(t[2]); if (ny !== y) edges.push([x, Math.min(y, ny), Math.max(y, ny), ny > y ? 1 : -1]); y = ny; }
+      else { if (y !== sy) edges.push([x, Math.min(y, sy), Math.max(y, sy), sy > y ? 1 : -1]); x = sx; y = sy; }
+      // Kayıpsız modda hiçbir köşe görselin dışına taşamaz (taşan kısım görünmez ama dosya yanlış olur).
+      if (x < 0 || y < 0 || x > width || y > height) return `köşe (${x}, ${y}) görselin dışında`;
+    }
+    edges.sort((p, q) => p[1] - q[1]);
+    let next = 0, active = [];
+    const y0 = edges.length ? edges[0][1] : 0, y1 = edges.reduce((mx, e) => Math.max(mx, e[2]), 0);
+    for (let row = Math.max(0, y0); row < Math.min(height, y1); row++) {
+      while (next < edges.length && edges[next][1] <= row) active.push(edges[next++]);
+      active = active.filter((e) => e[2] > row);
+      active.sort((p, q) => p[0] - q[0]);
+      let winding = 0;
+      for (let k = 0; k < active.length - 1; k++) {
+        winding += active[k][3];
+        if (!winding) continue;
+        for (let px = Math.max(0, active[k][0]); px < Math.min(width, active[k + 1][0]); px++) {
+          const p = row * width + px;
+          if (painted[p]) return `piksel (${px}, ${row}) iki kez boyanıyor`;
+          painted[p] = 1;
+          out.set([r, g, b, a], p * 4);
+        }
+      }
+    }
+  }
+  for (let p = 0; p < width * height; p++) {
+    const i = p * 4;
+    if (rgba[i + 3] === 0) { if (painted[p]) return `saydam piksel (${p % width}, ${Math.floor(p / width)}) boyanmış`; continue; }
+    if (out[i] !== rgba[i] || out[i + 1] !== rgba[i + 1] || out[i + 2] !== rgba[i + 2] || out[i + 3] !== rgba[i + 3]) {
+      return `piksel (${p % width}, ${Math.floor(p / width)}) farklı: beklenen ${Array.from(rgba.slice(i, i + 4))}, bulunan ${Array.from(out.slice(i, i + 4))}`;
+    }
+  }
+  return null;
+}
+
 // ---------- Doğrulama ----------
 
 const ALLOWED_ELEMENTS = new Set(['svg', 'path']);
@@ -342,6 +410,10 @@ export function validateSvg(svg) {
   if (!text.endsWith('</svg>')) errors.push('</svg> ile bitmiyor');
   const attr = (s, name) => new RegExp(`\\b${name}="([^"]*)"`).exec(s)?.[1];
   if (attr(root[1], 'xmlns') !== 'http://www.w3.org/2000/svg') errors.push('xmlns eksik ya da hatalı');
+  const rootAttrs = [...root[1].matchAll(/\s([a-zA-Z:-]+)="/g)].map((m) => m[1]);
+  for (const a of rootAttrs) if (!['xmlns', 'version', 'width', 'height', 'viewBox', 'shape-rendering'].includes(a)) errors.push(`kökte izin verilmeyen öznitelik: ${a}`);
+  const sr = attr(root[1], 'shape-rendering');
+  if (sr !== undefined && sr !== 'crispEdges') errors.push('shape-rendering yalnızca crispEdges olabilir');
   const vb = (attr(root[1], 'viewBox') ?? '').trim().split(/[\s,]+/).map(Number);
   const w = Number(attr(root[1], 'width')), h = Number(attr(root[1], 'height'));
   if (vb.length !== 4 || vb.some((v) => !Number.isFinite(v)) || vb[2] <= 0 || vb[3] <= 0) errors.push('viewBox eksik ya da hatalı');
@@ -361,6 +433,10 @@ export function validateSvg(svg) {
     if (!ALLOWED_ELEMENTS.has(name) || name === 'svg') { errors.push(`izin verilmeyen öğe: ${tag.slice(0, 40)}`); continue; }
     if (!tag.endsWith('/>')) { errors.push('path kendini kapatmalı'); continue; }
     if (/transform=/.test(tag)) errors.push('path transform içermemeli');
+    const pathAttrs = [...tag.matchAll(/\s([a-zA-Z:-]+)="/g)].map((m) => m[1]);
+    for (const a of pathAttrs) if (!['d', 'fill', 'fill-opacity'].includes(a)) errors.push(`path'te izin verilmeyen öznitelik: ${a}`);
+    const op = attr(tag, 'fill-opacity');
+    if (op !== undefined && !(/^(0|1|0?\.\d+)$/.test(op) && Number(op) > 0 && Number(op) <= 1)) errors.push(`geçersiz fill-opacity: ${op}`);
     const d = attr(tag, 'd');
     const fill = attr(tag, 'fill');
     if (!/^#[0-9A-Fa-f]{6}$/.test(fill ?? '')) errors.push(`geçersiz renk: ${fill}`);
