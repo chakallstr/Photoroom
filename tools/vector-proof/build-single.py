@@ -22,11 +22,15 @@ assert not re.search(r'^import ', vec_inline, flags=re.M)
 vec_inline = grad_inline + '\n' + vec_inline
 vec_inline = re.sub(r'\bwasm\b', '__engine', vec_inline)  # yapıştırma kodundaki `wasm` ile çakışmasın
 vec_inline += '\nconst V = { ' + ', '.join(exported) + ' };\n'
-boot = f"\nconst __wasmBytes = Uint8Array.from(atob('{wasm}'), (c) => c.charCodeAt(0));\nawait V.initVectorizer(__wasmBytes, __glue);\n"
+boot = f"\nconst __wasmBytes = Uint8Array.from(atob('{wasm}'), (c) => c.charCodeAt(0));\ntry {{ await V.initVectorizer(__wasmBytes, __glue); }} catch (e) {{ document.getElementById('status').textContent = 'Vektör motoru yüklenemedi: ' + e.message; throw e; }}\n"
 start = html.index('/*VEKTOR-MOTORU*/'); end = html.index('/*SON*/') + len('/*SON*/')
 html = html[:start] + glue_inline + '\n' + vec_inline + boot + html[end:]
 html = html.replace("const SAMPLE = 'assets/ornek-logo.jpg';", f"const SAMPLE = 'data:image/jpeg;base64,{sample}';")
 html = html.replace('<link rel="icon" href="assets/logo.svg" type="image/svg+xml">\n', '')
 html = html.replace('<p>Kendi görselini yükle', '<p>Bu dosya tek başına çalışır: indirip çift tıklayarak açabilirsin, internet gerekmez. Kendi görselini yükle')
+if len(sys.argv) > 2 and sys.argv[2] == '--artifact':
+    html = re.sub(r'^<!doctype html>\s*<html[^>]*>\s*<head>\s*', '', html, flags=re.I)
+    html = html.replace('</head>\n<body>\n', '\n').replace('</body>\n</html>\n', '\n')
+    assert '<html' not in html and '<body' not in html and '</head>' not in html
 pathlib.Path(sys.argv[1]).write_text(html)
 print(f'{sys.argv[1]}: {len(html) // 1024} KB')
