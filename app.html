@@ -70,6 +70,27 @@
         </div>
 
         <div class="field">
+          <span class="label">Logo <span class="plan-badge paid">İşletme</span></span>
+          <div class="logo-row">
+            <label class="btn btn-sm" id="logo-pick">Logo seç<input type="file" id="logo-input" accept="image/png,image/svg+xml,image/webp,image/jpeg" hidden></label>
+            <button type="button" class="btn btn-sm" id="logo-clear" hidden>Kaldır</button>
+            <img id="logo-preview" alt="" hidden>
+          </div>
+          <div id="logo-options" hidden>
+            <div class="seg" id="logo-pos" style="margin-top:10px">
+              <button type="button" data-value="tl" aria-pressed="false" aria-label="Sol üst">↖</button>
+              <button type="button" data-value="tr" aria-pressed="false" aria-label="Sağ üst">↗</button>
+              <button type="button" data-value="bl" aria-pressed="false" aria-label="Sol alt">↙</button>
+              <button type="button" data-value="br" aria-pressed="true" aria-label="Sağ alt">↘</button>
+            </div>
+            <div class="range-row" style="margin-top:10px">
+              <input type="range" id="logo-size" min="8" max="40" value="18" aria-label="Logo boyutu">
+              <output id="logo-size-out">%18</output>
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
           <span class="label">Dosya türü</span>
           <div class="seg" id="format">
             <button type="button" data-value="png" aria-pressed="true">PNG</button>
@@ -101,6 +122,18 @@
       </section>
     </div>
   </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <span>© 2026 Photoroot</span>
+      <nav class="footer-links">
+        <a href="yasal/mesafeli-satis.html">Mesafeli Satış Sözleşmesi</a>
+        <a href="yasal/iptal-iade.html">İptal ve İade</a>
+        <a href="yasal/gizlilik.html">Gizlilik ve KVKK</a>
+        <a href="yasal/iletisim.html">İletişim</a>
+      </nav>
+    </div>
+  </footer>
 
   <div class="toast" id="toast" role="status" hidden></div>
 
@@ -146,10 +179,37 @@
         <label class="input">Şehir<input name="city" autocomplete="address-level1"></label>
         <label class="input">Adres<input name="address" autocomplete="street-address"></label>
       </fieldset>
+      <label class="check terms">
+        <input type="checkbox" name="acceptTerms" required>
+        <span><a href="yasal/on-bilgilendirme.html" target="_blank">Ön Bilgilendirme Formu</a>'nu ve
+        <a href="yasal/mesafeli-satis.html" target="_blank">Mesafeli Satış Sözleşmesi</a>'ni okudum, onaylıyorum.
+        Hizmetin hemen başlamasını ve bu nedenle cayma hakkımın bulunmadığını kabul ediyorum.</span>
+      </label>
       <p class="form-error" id="upgrade-error" hidden></p>
       <button type="submit" class="btn btn-primary" value="submit" id="upgrade-submit">Ödemeye geç</button>
       <p class="hint">Ödeme iyzico güvencesiyle alınır. İstediğin zaman iptal edebilirsin.</p>
     </form>
+  </dialog>
+
+  <dialog class="modal" id="settings-dialog">
+    <div class="modal-body">
+      <form method="dialog"><button type="submit" class="modal-close" value="cancel" aria-label="Kapat">×</button></form>
+      <h2>Hesap ayarları</h2>
+      <form id="password-form" class="settings-section">
+        <h3>Şifre değiştir</h3>
+        <label class="input">Mevcut şifre<input type="password" name="currentPassword" autocomplete="current-password" required></label>
+        <label class="input">Yeni şifre<input type="password" name="newPassword" autocomplete="new-password" minlength="8" required></label>
+        <p class="form-error" hidden></p>
+        <button type="submit" class="btn">Şifreyi değiştir</button>
+      </form>
+      <form id="delete-form" class="settings-section danger">
+        <h3>Hesabı sil</h3>
+        <p class="hint">Hesabın, aboneliğin ve kullanım kayıtların kalıcı olarak silinir. Aktif aboneliğin varsa iptal edilir; kalan süre için iade yapılmaz.</p>
+        <label class="input">Şifren<input type="password" name="password" autocomplete="current-password" required></label>
+        <p class="form-error" hidden></p>
+        <button type="submit" class="btn btn-danger">Hesabımı kalıcı olarak sil</button>
+      </form>
+    </div>
   </dialog>
 
   <template id="item-tpl">

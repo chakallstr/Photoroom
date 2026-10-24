@@ -94,7 +94,8 @@ function render() {
     menu.append(b);
   };
   if (plan === 'free') item("Pro'ya geç", () => openUpgrade());
-  if (sub?.effective && sub.status === 'active') item('Aboneliği iptal et', cancelSubscription);
+  if (sub && (sub.status === 'active' || sub.status === 'unpaid')) item('Aboneliği iptal et', cancelSubscription);
+  item('Hesap ayarları', openSettings);
   item('Çıkış yap', logout);
   toggle.onclick = (e) => {
     e.stopPropagation();
@@ -200,7 +201,7 @@ function renderUpgrade() {
   $('#upgrade-price').innerHTML = upgrade.period === 'monthly'
     ? `<strong>${price} ₺</strong> / ay`
     : `<strong>${price.toLocaleString('tr-TR')} ₺</strong> / yıl <span class="hint">(aylık ${Math.floor(price / 12)} ₺)</span>`;
-  $('#upgrade-dialog h2').textContent = `${PLAN_NAMES[upgrade.plan]} pakete geç`;
+  $('#upgrade-dialog h2').textContent = `${PLAN_NAMES[upgrade.plan]} paketine geç`;
 }
 
 export async function openUpgrade(reason = '', preset = {}) {
@@ -241,7 +242,7 @@ function initUpgrade() {
     const btn = $('#upgrade-submit');
     btn.disabled = true;
     btn.textContent = 'Yönlendiriliyor…';
-    const body = { ...upgrade };
+    const body = { ...upgrade, acceptTerms: form.acceptTerms.checked };
     if (state.me.billing?.needsCustomer) {
       body.customer = Object.fromEntries(['name', 'surname', 'gsmNumber', 'identityNumber', 'city', 'address'].map((k) => [k, form[k].value]));
     }
@@ -263,11 +264,51 @@ function initUpgrade() {
   });
 }
 
+// ---------- Hesap ayarları ----------
+
+function openSettings() {
+  for (const f of document.querySelectorAll('#settings-dialog form[id]')) {
+    f.reset();
+    f.querySelector('.form-error').hidden = true;
+  }
+  $('#settings-dialog').showModal();
+}
+
+function initSettings() {
+  const bind = (id, path, fields, onOk, confirmText) => {
+    const form = $(id);
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (confirmText && !confirm(confirmText)) return;
+      const btn = form.querySelector('button[type=submit]');
+      const err = form.querySelector('.form-error');
+      btn.disabled = true;
+      const body = Object.fromEntries(fields.map((k) => [k, form[k].value]));
+      const r = await api('POST', path, body).catch(() => ({ status: 0, data: {} }));
+      btn.disabled = false;
+      if (r.status === 200) return onOk(form);
+      err.textContent = r.data.message || 'Bir hata oluştu.';
+      err.hidden = false;
+    });
+  };
+  bind('#password-form', '/api/account/password', ['currentPassword', 'newPassword'], (form) => {
+    form.reset();
+    $('#settings-dialog').close();
+    toast('Şifren değiştirildi. Diğer cihazlardaki oturumlar kapatıldı.');
+  });
+  bind('#delete-form', '/api/account/delete', ['password'], async () => {
+    $('#settings-dialog').close();
+    await refresh();
+    toast('Hesabın ve verilerin silindi.', 6000);
+  }, 'Hesabın kalıcı olarak silinecek. Emin misin?');
+}
+
 // ---------- Başlangıç ----------
 
 export async function init() {
   initAuth();
   initUpgrade();
+  initSettings();
   document.addEventListener('click', (e) => {
     const menu = document.querySelector('.account-menu .menu');
     if (menu && !e.target.closest('.account-menu')) menu.hidden = true;
