@@ -22,3 +22,15 @@ Gerekli: Node 22, `npm i -g playwright` (Chromium), `cargo install resvg`, `xmll
 python3 -m http.server 8795      # repo kökünde
 node tools/vector-proof/proof.mjs
 ```
+
+## Ürün yolundan kanıt (editör → PNG + SVG → ölçüm)
+
+```bash
+npm start &                                   # editör http://localhost:8000
+node tools/vector-proof/urun-kanit.mjs <çıktı-klasörü> <görsel.png> [...]   # playwright gerekir
+tools/vector-proof/urun-olc.sh <çıktı-klasörü> [orijinaller-klasörü]       # resvg + Pillow gerekir
+```
+`urun-kanit.mjs` her görseli editöre yükler, ürünün şeffaf PNG'sini (orijinal boyut) ve varsayılan SVG'sini
+(Yüksek sadakat; AI netleştirme kendiliğinden açılır) indirir. `urun-olc.sh` SVG'yi viewBox boyutunda çizip
+Lanczos ile küçültür ve hem ürün PNG'siyle hem (verilirse) orijinalle CIE76 ΔE üzerinden karşılaştırır; "belirgin
+fark" ΔE > 6 olan piksel payıdır. Sonuçlar: `docs/vektor-kanit.md`.

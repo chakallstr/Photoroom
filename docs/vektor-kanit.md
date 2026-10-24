@@ -220,6 +220,25 @@ boşluklar açılıyor (tol 1,0'da şekil farkı 6.905 px), vazgeçildi.
 Kayıpsız mod bunu üretir. Büyütmede kenarlar 1068 piksel çözünürlüğünde basamaklıdır (orijinalin 4 katı); "temiz
 eğri" değildir, ama orijinale en yakın vektördür.
 
+### Ürün yolundan kanıt (editör → PNG + SVG), tek yöntemle
+
+`tools/vector-proof/urun-kanit.mjs` altı görseli editöre yükledi, ürünün şeffaf PNG'sini (orijinal boyut) ve
+varsayılan SVG'sini (Yüksek sadakat, netleştirme kendiliğinden) indirdi; `urun-olc.sh` hepsini aynı yöntemle ölçtü
+(SVG viewBox boyutunda resvg ile çizilir, Lanczos ile küçültülür, CIE76 ΔE; belirgin fark = ΔE > 6 piksel payı).
+
+| Görsel | SVG ↔ ürün PNG | SVG ↔ orijinal dosya | Yol / boyut | Süre (model dahil) |
+|---|---|---|---|---|
+| Ejderha 267×218 (kendi saydamlığı) | ΔE 1,87, **%1,4** | ΔE 1,87, **%1,4** | 2.283 / 1,9 MB | 21 s |
+| Anime 640×480 | ΔE 1,56, **%0,0** | ΔE 1,70, %0,8 | 2.521 / 4,8 MB | 101 s |
+| Panda 191×169 | ΔE 2,04, **%1,3** | ΔE 2,84, %5,8* | 2.814 / 0,6 MB | 28 s |
+| Pikachu 224×224 | ΔE 1,75, **%1,3** | ΔE 5,58, %13,2* | 3.408 / 1,7 MB | 31 s |
+| Temiz logo 771×200 | ΔE 1,85, **%0,3** | ΔE 5,71, %9,2* | 177 / 0,1 MB | 59 s |
+| Bulanık logo 771×200 | ΔE 1,80, **%1,9** | ΔE 7,71, %27,5* | 496 / 0,4 MB | 60 s |
+
+\* Bu görseller opak (saydamlık yok); editör arka planı sildiği için ürün çıktısı "kesilmiş ürün"dür ve orijinal
+dosyadaki zemin pikselleri farka girer. Ürünün tanımına göre karşılaştırma (SVG ↔ ürünün kendi PNG'si) altı
+görselde de %0,0–1,9. Kendi saydamlığı olan girdide (ejderha) SVG orijinal dosyayla da %1,4.
+
 ### AI netleştirme ile (waifu2x)
 
 Küçük, bulanık kaynakta tracer'ın yapabileceği sınırlı: ayrıntı kaynakta yok. Vektörden önce görsel waifu2x
