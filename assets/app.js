@@ -9,6 +9,7 @@ const settings = {
   size: '1080x1080',
   padding: 8,
   shadow: false,
+  sharpen: false, // AI netleştirme (upscale-worker.js)
   format: 'png',
   logo: null, // HTMLImageElement
   logoPos: 'br',
@@ -17,7 +18,7 @@ const settings = {
 
 const LOGO_KEY = 'photoroot-logo';
 
-const items = new Map(); // id -> { file, name, el, cutout, bbox, status }
+const items = new Map(); // id -> { file, name, el, cutout, sharp, bbox, status }
 const queue = [];
 let nextId = 1;
 let busy = false;
@@ -122,6 +123,53 @@ async function pump() {
   worker.postMessage({ type: 'run', id, blob: item.file });
 }
 
+// ---------- AI netleştirme ----------
+// Kesilmiş ürün görseli (cutout) isteğe bağlı olarak 4× büyütülüp netleştirilir; sonuç item.sharp'ta tutulur,
+// kompozisyon varsa onu kullanır. Rötuş yapılınca geçersiz olur ve yeniden üretilir.
+let sharpenWorker = null;
+let sharpenJob = 0;
+const sharpenJobs = new Map(); // job id -> item id
+function getSharpenWorker() {
+  if (!sharpenWorker) {
+    sharpenWorker = new Worker(new URL('./upscale-worker.js', import.meta.url), { type: 'module' });
+    sharpenWorker.onmessage = ({ data }) => {
+      const itemId = sharpenJobs.get(data.id);
+      const item = items.get(itemId);
+      if (!item || item.sharpenJob !== data.id) { if (data.type !== 'progress') sharpenJobs.delete(data.id); return; }
+      if (data.type === 'progress') { setOverlay(item, `AI netleştiriliyor… ${data.done}/${data.total}`); return; }
+      sharpenJobs.delete(data.id);
+      item.sharpenJob = null;
+      if (data.type === 'done') {
+        const c = document.createElement('canvas');
+        c.width = data.width; c.height = data.height;
+        c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(data.rgba.buffer), data.width, data.height), 0, 0);
+        item.sharp = c;
+      } else {
+        setStatus(data.message, 1, true);
+      }
+      renderPreview(item);
+      updateToolbar();
+    };
+    sharpenWorker.onerror = (e) => setStatus('AI netleştirme başlatılamadı: ' + (e.message || 'bilinmeyen hata'), 1, true);
+  }
+  return sharpenWorker;
+}
+function sharpenItem(item) {
+  if (item.status !== 'done' || !settings.sharpen || item.sharp || item.sharpenJob) return;
+  const { width, height } = item.cutout;
+  if (width * height > 1024 * 1024) return; // yeterince büyük; netleştirme gerekmez
+  const id = ++sharpenJob;
+  item.sharpenJob = id;
+  sharpenJobs.set(id, [...items.entries()].find(([, v]) => v === item)[0]);
+  setOverlay(item, 'AI netleştiriliyor… (ilk seferde 21 MB model iner)');
+  const rgba = item.cutout.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data;
+  getSharpenWorker().postMessage({ type: 'run', id, rgba, width, height });
+}
+/** Kompozisyonun çizeceği kaynak: netleştirilmiş varsa o. */
+function sourceOf(item) {
+  return settings.sharpen && item.sharp ? item.sharp : item.cutout;
+}
+
 function onResult({ id, width, height, buffer }) {
   busy = false;
   const item = items.get(id);
@@ -147,6 +195,7 @@ function onResult({ id, width, height, buffer }) {
     renderPreview(item);
     item.el.querySelector('[data-action="download"]').disabled = false;
     item.el.querySelector('[data-action="edit"]').disabled = false;
+    sharpenItem(item);
   }
   if (!queue.length) setStatus('Hazır', 1);
   updateToolbar();
@@ -159,7 +208,9 @@ async function editItem(id) {
   if (!(await openTouchup(item))) return;
   const { width, height } = item.cutout;
   item.bbox = alphaBounds(item.cutout.getContext('2d').getImageData(0, 0, width, height).data, width, height);
+  item.sharp = null; // rötuş yapıldı; netleştirme yeniden üretilir
   renderPreview(item);
+  sharpenItem(item);
 }
 
 function onItemError(id, message) {
@@ -231,7 +282,10 @@ function backgroundFill() {
 
 // Seçili ayarlarla tam çözünürlüklü çıktı üretir. maxSide verilirse önizleme için küçültür.
 function compose(item, maxSide = Infinity) {
-  const { cutout, bbox } = item;
+  const cutout = sourceOf(item);
+  // bbox kesilmiş görselin koordinatlarında; netleştirilmiş kaynak 4× ise ölçeklenir
+  const f = cutout.width / item.cutout.width;
+  const bbox = { x: item.bbox.x * f, y: item.bbox.y * f, w: item.bbox.w * f, h: item.bbox.h * f };
   const pad = settings.padding / 100;
   let W, H, dx, dy, dw, dh, sx = 0, sy = 0, sw = cutout.width, sh = cutout.height;
 
@@ -446,6 +500,11 @@ $('#padding').addEventListener('input', (e) => {
   settings.padding = Number(e.target.value);
   $('#padding-out').textContent = `%${settings.padding}`;
   rerenderAll();
+});
+$('#sharpen').addEventListener('change', (e) => {
+  settings.sharpen = e.target.checked;
+  $('#sharpen-hint').hidden = !settings.sharpen;
+  for (const item of items.values()) { if (settings.sharpen) sharpenItem(item); renderPreview(item); }
 });
 $('#shadow').addEventListener('change', (e) => {
   settings.shadow = e.target.checked;
