@@ -848,7 +848,10 @@ export function vectorizeExact(rgba, width, height, { colorBits } = {}) {
   if (!wasm) throw new Error('Vektör motoru yüklenmedi (initVectorizer).');
   let pixels = rgba instanceof Uint8Array ? rgba : new Uint8Array(rgba.buffer, rgba.byteOffset, rgba.byteLength);
   if (colorBits) pixels = posterize(pixels, colorBits);
-  const svg = wasm.vectorize_exact(pixels, width, height);
+  let svg = wasm.vectorize_exact(pixels, width, height);
+  // Yuvarlanmış (büyütülmüş) kaynakta crispEdges kaldırılır: 1:1 çizimde tam sayı kenarlar zaten pikseldir,
+  // küçültülerek gösterildiğinde ise kenar yumuşatma olmazsa tırtıklanır (ölçümde belirgin fark %1,8 → %9,9).
+  if (colorBits) svg = svg.replace(' shape-rendering="crispEdges"', '');
   const check = validateSvg(svg);
   if (!check.ok) throw new Error('Vektör çıktısı doğrulanamadı: ' + check.errors.slice(0, 3).join('; '));
   if (check.stats.paths > LIMITS.maxPaths || check.stats.bytes > LIMITS.maxBytes) {
