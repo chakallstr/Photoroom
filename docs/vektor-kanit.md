@@ -139,6 +139,17 @@ katman bantları ayrıca içerir). Gölgeli çizimde kalan fark: kontur dibindek
 ortak paletle boyanıyor ve orijinalden koyu/kalın görünüyor; ayrıca vektör çözünürlük eklemez, bulanık
 kaynaktaki ayrıntı (göz, diş) geri gelmez. Sonraki adım: kontur piksellerini ince çizgi olarak ayrı izlemek.
 
+### Çizgi film tonlaması (cel) ve küçük ayrıntılar
+
+Çizim ayarı artık bölge tonlarını k-means yerine bulanık parlaklığın eşit aralıklı seviyelerine göre böler
+(gölge / ana ton / ışık; `celTones`). Sınırlar eş-ışık eğrileri olduğu için pürüzsüz, ışık alanları küçük de
+olsa korunur; gölge bantlarının bulanıklaştırılması kaldırıldı (puslu/pastel görünüm veriyordu). Küçük ama
+anlamlı alanlar için bölge eşiği %0,3 → %0,05, ortak palet 16 → 32 renk ve pay eşiği %0,2 → %0,05 (göz akı ve
+ağız kırmızısı geri geldi); kenar yapıştırma yarıçapı 2·ölçek → ölçek, çoğunluk filtresi en fazla 2 piksel
+(göz, diş erimesin). Ölçüm: netleştirilmiş ejderhada ΔE 6,5; netleştirilmemiş bulanık kaynakta 8,5 (cel
+tonlama bulanık kaynakta k-means'ten daha az isabetli; Çizim ayarı AI netleştirmeyle birlikte düşünülmeli).
+Logolar değişmedi (temiz logo 0,4; bulanık logo 2,7); anime 3,9 (yol 1015 → 278).
+
 ### AI netleştirme ile (waifu2x)
 
 Küçük, bulanık kaynakta tracer'ın yapabileceği sınırlı: ayrıntı kaynakta yok. Vektörden önce görsel waifu2x

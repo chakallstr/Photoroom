@@ -11,7 +11,7 @@ import { analyzeRegions, gradientDef, regionMask } from './gradients.js';
 // seçildi: köşe eşiği 90 dik çizgileri en düz tutuyor (30'da harf gövdeleri dalgalı eğriye dönüşüyor).
 export const PRESETS = {
   logo: { binary: false, paletteColors: 8, regions: true, localColors: 4, localTarget: 4, smooth: 0.67, colorPrecision: 7, filterSpeckle: 8, layerDifference: 8, cornerThreshold: 90, lengthThreshold: 10, spliceThreshold: 60 },
-  cizim: { binary: false, paletteColors: 16, regions: true, soft: true, localColors: 6, localTarget: 3, smooth: 0.67, colorPrecision: 7, filterSpeckle: 4, layerDifference: 8, cornerThreshold: 90, lengthThreshold: 10, spliceThreshold: 60 },
+  cizim: { binary: false, paletteColors: 32, regions: true, tones: 'cel', localColors: 4, smooth: 0.67, colorPrecision: 7, filterSpeckle: 4, layerDifference: 8, cornerThreshold: 90, lengthThreshold: 10, spliceThreshold: 60 },
   // Çok renkli, gölgeli çizimler için paletsiz: renk doğruluğu en yüksek, dosya daha büyük.
   detayli: { binary: false, colorPrecision: 6, filterSpeckle: 2, layerDifference: 24, cornerThreshold: 45, lengthThreshold: 3.5, spliceThreshold: 45 },
   siyahBeyaz: { binary: true, colorPrecision: 8, filterSpeckle: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, spliceThreshold: 45 },
@@ -271,6 +271,30 @@ export function regionTones(rgba, pixels, { maxColors = 4, mergeDelta = 6, targe
   return best ? best.pal : [[50, 0, 0]];
 }
 
+// Çizgi film tonlaması: bölge, bulanıklaştırılmış parlaklığın (Lab L) eşit aralıklı seviyelerine bölünür
+// (gölge / ana ton / ışık). Sınırlar eş-ışık eğrileri olduğu için pürüzsüzdür; küçük ama parlak ışık alanları
+// k-means'te olduğu gibi ana tona yutulmaz. Dönüş: { labs: ton renkleri (Lab), thresholds: L eşikleri }.
+export function celTones(rgba, soft, pixels, { maxTones = 4, minRange = 12, step = 15 } = {}) {
+  const n = pixels.length;
+  const L = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const q = pixels[i] * 4; L[i] = srgbToLab(soft[q], soft[q + 1], soft[q + 2])[0]; }
+  const sorted = Float32Array.from(L).sort();
+  const pct = (f) => sorted[Math.min(n - 1, Math.floor(f * n))];
+  const lo = pct(0.05), hi = pct(0.95), range = hi - lo;
+  const k = range < minRange ? 1 : Math.max(1, Math.min(maxTones, Math.round(range / step)));
+  const thresholds = [];
+  for (let i = 1; i < k; i++) thresholds.push(lo + range * i / k);
+  const sums = Array.from({ length: k }, () => [0, 0, 0, 0]);
+  const bandOf = (l) => { let b = 0; while (b < thresholds.length && l >= thresholds[b]) b++; return b; };
+  for (let i = 0; i < n; i++) { const b = bandOf(L[i]), q = pixels[i] * 4, sm = sums[b]; sm[0] += rgba[q]; sm[1] += rgba[q + 1]; sm[2] += rgba[q + 2]; sm[3]++; }
+  const labs = [], keep = [];
+  sums.forEach((sm, b) => { if (sm[3] >= Math.max(20, n * 0.01)) { labs.push(srgbToLab(sm[0] / sm[3], sm[1] / sm[3], sm[2] / sm[3])); keep.push(b); } });
+  if (!labs.length) { const sm = sums.reduce((a, c) => [a[0] + c[0], a[1] + c[1], a[2] + c[2], a[3] + c[3]]); return { labs: [srgbToLab(sm[0] / sm[3], sm[1] / sm[3], sm[2] / sm[3])], thresholds: [], bandMap: [0] }; }
+  // Elenen (çok küçük) bantlar en yakın komşu banda eşlenir
+  const bandMap = sums.map((_, b) => { let best = 0, bd = Infinity; keep.forEach((kb, i) => { const d = Math.abs(kb - b); if (d < bd) { bd = d; best = i; } }); return best; });
+  return { labs, thresholds, bandMap };
+}
+
 // Bölgeye duyarlı palet. Görsel önce renk-sürekli bölgelere ayrılır (gradients.js). Gradyana sığan bölge tek
 // renge (ortalama) boyanır; üstüne sonradan gradyanlı yol çizilir. Sığmayan büyük bölge kendi içinde en fazla
 // `localColors` tona ayrılır (çizgi film gölgelemesi: ana ton + gölge + ışık). Bölge dışı pikseller (kontur,
@@ -278,7 +302,7 @@ export function regionTones(rgba, pixels, { maxColors = 4, mergeDelta = 6, targe
 // Tek paletle (16 renk) tüm görseli boyamaya göre tonlar bölgelere ait kalır, komşu bölgelerin tonları karışmaz.
 //
 // Sonuç bir "etiket planı": her piksel için etiket (Int32, -1 saydam), etiket → palet rengi, etiket → bölge.
-export function buildRegionLabels(rgba, width, height, { gradients, flats }, { maxColors = 16, smooth = 0, localColors = 4, localMerge = 6, localTarget = 4, mergeDelta = 5, snapRadius = 0, blurRadius = 0 } = {}) {
+export function buildRegionLabels(rgba, width, height, { gradients, flats }, { maxColors = 16, smooth = 0, localColors = 4, localMerge = 6, localTarget = 4, mergeDelta = 5, snapRadius = 0, blurRadius = 0, tones = 'kmeans' } = {}) {
   const n = width * height;
   const owner = new Int32Array(n).fill(-1); // piksel → bölge sırası (gradients sonra flats)
   const regions = [...gradients.map((g) => ({ pixels: g.pixels, gradient: true })), ...flats.map((f) => ({ pixels: f.pixels, gradient: false }))];
@@ -286,15 +310,20 @@ export function buildRegionLabels(rgba, width, height, { gradients, flats }, { m
   // Ortak palet: yalnızca bölge dışı piksellerden
   const rest = new Uint8Array(rgba.length);
   for (let p = 0, i = 0; i < rgba.length; p++, i += 4) if (owner[p] < 0) { rest[i] = rgba[i]; rest[i + 1] = rgba[i + 1]; rest[i + 2] = rgba[i + 2]; rest[i + 3] = rgba[i + 3]; }
-  const palette = findPalette(rest, { maxColors });
+  // Küçük ayrıntıların rengi (göz akı gibi) atılmasın: pay eşiği düşük
+  const palette = findPalette(rest, { maxColors, minShare: 0.0005 });
   const globalCount = palette.length;
+  // Bölge piksellerinin bölgeyle sınırlı bulanık rengi: ton ataması bunun üzerinden yapılır (pürüzsüz bant sınırı)
+  const softSrc = blurRadius > 0 ? maskedBlur(rgba, owner, width, height, blurRadius) : rgba;
   // Bölge paletleri
-  const local = regions.map((r) => {
+  const cel = []; // tones === 'cel' için bölge başına eşikler
+  const local = regions.map((r, ri) => {
     if (r.gradient) {
       const m = [0, 0, 0];
       for (const p of r.pixels) { m[0] += rgba[p * 4]; m[1] += rgba[p * 4 + 1]; m[2] += rgba[p * 4 + 2]; }
       return [srgbToLab(m[0] / r.pixels.length, m[1] / r.pixels.length, m[2] / r.pixels.length)];
     }
+    if (tones === 'cel') { const c = celTones(rgba, softSrc, r.pixels, { maxTones: localColors }); cel[ri] = c; return c.labs; }
     return regionTones(rgba, r.pixels, { maxColors: localColors, mergeDelta: localMerge, target: localTarget });
   });
   // Etiketler: ortak renkler + her bölgenin tonları. Birbirine çok yakın tonlar (ΔE < mergeDelta) aynı palet
@@ -318,13 +347,19 @@ export function buildRegionLabels(rgba, width, height, { gradients, flats }, { m
   const nearest = mapToPalette(rgba, palette);
   const labels = new Int32Array(n);
   for (let p = 0; p < n; p++) labels[p] = nearest[p] === 255 ? -1 : labelOfColor.get(nearest[p]);
-  const softSrc = blurRadius > 0 ? maskedBlur(rgba, owner, width, height, blurRadius) : rgba;
   const labCache = new Map();
   for (let p = 0; p < n; p++) {
     const r = owner[p];
     if (r < 0 || labels[p] < 0) continue;
     const pal = local[r];
     if (pal.length === 1) { labels[p] = offsets[r]; continue; }
+    if (cel[r]) {
+      // Parlaklık seviyesine göre bant
+      const i = p * 4, l = srgbToLab(softSrc[i], softSrc[i + 1], softSrc[i + 2])[0];
+      let b = 0; while (b < cel[r].thresholds.length && l >= cel[r].thresholds[b]) b++;
+      labels[p] = offsets[r] + cel[r].bandMap[b];
+      continue;
+    }
     const i = p * 4, key = ((softSrc[i] >> 3) << 10) | ((softSrc[i + 1] >> 3) << 5) | (softSrc[i + 2] >> 3);
     let lab = labCache.get(key);
     if (!lab) { lab = srgbToLab((softSrc[i] & 0xf8) + 4, (softSrc[i + 1] & 0xf8) + 4, (softSrc[i + 2] & 0xf8) + 4); labCache.set(key, lab); }
@@ -564,17 +599,20 @@ export function vectorizePixels(rgba, width, height, { preset = 'logo', cutout =
   if (o.binary) pixels = toBlackAndWhite(rgba, threshold);
   else if (o.paletteColors) {
     // Pürüzsüzleştirme yarıçapı büyütme oranıyla ölçeklenir (orijinal görselde ~1 piksel).
-    const smooth = o.smooth ? Math.max(1, Math.round(o.smooth * Math.max(1, scale))) : 0;
+    // Çoğunluk filtresi yarıçapı: ölçekle ama küçük ayrıntı (göz, diş) silinmesin diye en fazla 2
+    const smooth = o.smooth ? Math.min(2, Math.max(1, Math.round(o.smooth * Math.max(1, scale)))) : 0;
     if (o.regions) {
       // Bölgeleme büyütülmüş görselde, ölçeğe duyarlı kenar maskesiyle (gradients.js). Kenar çevresindeki
       // pikseller (kontur ve konturun dibindeki koyu gölge) bölgeye girmez, ortak paletle boyanır: çizgi film
       // gölgelemesindeki "kontur dibi gölgesi" böyle korunur. Denendi ve vazgeçildi: bölgelemeyi özgün
       // çözünürlükte yapıp etiketleri büyütmek konturu inceltiyor ama bu gölgeyi siliyor (ΔE 6,8 → 10, görüntü
       // pastel ve düz kalıyor).
-      const analysis = analyzeRegions(rgba, width, height, { max: LIMITS.maxGradients, scale, edgeRadius: o.edgeRadius });
+      // Küçük ama anlamlı alanlar (göz akı, diş) da bölge olsun: eşik görselin %0,05'i (en az 100 piksel)
+      const analysis = analyzeRegions(rgba, width, height, { max: LIMITS.maxGradients, scale, edgeRadius: o.edgeRadius, minArea: Math.max(100, Math.round(width * height * (o.minAreaShare ?? 0.0005))) });
       const plan = buildRegionLabels(rgba, width, height, analysis, {
-        maxColors: o.paletteColors, smooth, localColors: o.localColors, localTarget: o.localTarget,
-        snapRadius: o.snapRadius ?? Math.max(1, Math.round(2 * scale)), blurRadius: o.blurRadius ?? Math.max(1, Math.round(1.5 * scale)),
+        maxColors: o.paletteColors, smooth, localColors: o.localColors, localTarget: o.localTarget, tones: o.tones ?? 'kmeans',
+        // Yapıştırma yalnızca kenar rampası genişliğinde (≈ ölçek); daha genişi göz gibi küçük ayrıntıları eritir
+        snapRadius: o.snapRadius ?? Math.max(1, Math.round(scale)), blurRadius: o.blurRadius ?? Math.max(1, Math.round((o.tones === 'cel' ? 3 : 1.5) * scale)),
       });
       pixels = paintLabels(rgba, plan.labels, plan, width, height);
       // Bölge üyeliği son etiketlerden (kenara yapışan pikseller dahil): maskeler halkasız
