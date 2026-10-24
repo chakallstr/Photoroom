@@ -11,7 +11,7 @@ const settings = {
   shadow: false,
   sharpen: false, // AI netleştirme (upscale-worker.js)
   format: 'png', // png | jpg | svg
-  svgMode: 'temiz', // temiz | sadakat | birebir
+  svgMode: 'sadakat', // sadakat | temiz | birebir
   logo: null, // HTMLImageElement
   logoPos: 'br',
   logoSize: 18, // görselin kısa kenarına göre yüzde
@@ -189,6 +189,13 @@ function sharpenItem(item) {
   setOverlay(item, 'AI netleştiriliyor… (ilk seferde 21 MB model iner)');
   const rgba = item.cutout.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data;
   getSharpenWorker().postMessage({ type: 'run', id, rgba, width, height });
+}
+// Yüksek sadakat SVG için netleştirme gerekir: kapalıysa açılır ve bu görselin netleştirilmesi beklenir.
+async function ensureSharp(item) {
+  if (!settings.sharpen) { settings.sharpen = true; $('#sharpen').checked = true; $('#sharpen-hint').hidden = false; }
+  sharpenItem(item);
+  for (let i = 0; i < 600 && !item.sharp && (item.sharpenJob || i === 0); i++) await new Promise((r) => setTimeout(r, 500));
+  return item.sharp ?? null;
 }
 /** Kompozisyonun çizeceği kaynak: netleştirilmiş varsa o. */
 function sourceOf(item) {
@@ -410,8 +417,9 @@ async function vectorOf(item) {
   const sharp = settings.sharpen && item.sharp ? item.sharp : null;
   if (settings.svgMode === 'birebir') return V.vectorizeExact(rgbaOf(base), W, H);
   if (settings.svgMode === 'sadakat') {
-    if (!sharp) throw new Error('"Yüksek sadakat" için önce "AI netleştir" seçeneğini aç (küçük ve orta boy görsellerde çalışır).');
-    const fit = V.shrinkForExact(rgbaOf(sharp), sharp.width, sharp.height); // büyük görselde 2× boyut
+    const s = sharp ?? await ensureSharp(item);
+    if (!s) throw new Error('"Yüksek sadakat" için AI netleştirme gerekir; bu görselde yapılamadı (1 megapikselden büyük olabilir). "Birebir" türünü dene.');
+    const fit = V.shrinkForExact(rgbaOf(s), s.width, s.height); // büyük görselde 2× boyut
     const r = V.vectorizeExact(fit.rgba, fit.width, fit.height, { colorBits: 5 });
     r.svg = r.svg.replace(/ width="\d+" height="\d+"/, ` width="${W}" height="${H}"`);
     return r;

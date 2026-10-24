@@ -209,6 +209,13 @@ saydamlığıyla), iki ayrı koşuda: ejderha %1,4, 2.283 yol, doğrulayıcı ge
 (`shrinkForExact`, 1,4 MP üstünde) 5 bit **%0,1** (2.606 yol, 5,1 MB), 6 bit %0,0 (7,5 MB). Editör ve laboratuvar
 bu kuralı uygular.
 
+Laboratuvarın kendi ölçümü (tarayıcıda, viewBox boyutunda çizip ikiye ikiye küçülterek): ejderha %0,23, anime
+%0,02. Editörde SVG'nin varsayılan türü "Yüksek sadakat"tır ve gerekirse AI netleştirmeyi kendiliğinden açar;
+uçtan uca testte indirilen dosya %1,4 (üç ayrı koşu). `crispEdges` korunur: kenar yumuşatmalı çizimde komşu
+şekiller arasında çizgi boşlukları oluşuyor (resvg, yarı boyutta piksellerin %42'si), crispEdges ile 1:1'de birebir.
+Köşe kırpma / Douglas–Peucker ile kenar yumuşatma denendi: komşu çokgenler ayrı sadeleşince aralarında beyaz
+boşluklar açılıyor (tol 1,0'da şekil farkı 6.905 px), vazgeçildi.
+
 5 bit seçildi: netleştirilmiş görselin tabanına (%1,6) ulaşıyor, dosya 3,3 MB. Laboratuvarda "AI netleştir" açıkken
 Kayıpsız mod bunu üretir. Büyütmede kenarlar 1068 piksel çözünürlüğünde basamaklıdır (orijinalin 4 katı); "temiz
 eğri" değildir, ama orijinale en yakın vektördür.

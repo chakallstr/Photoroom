@@ -107,11 +107,11 @@
         <div class="field" id="svg-mode-field" hidden>
           <span class="label">Vektör türü</span>
           <div class="seg" id="svg-mode">
-            <button type="button" data-value="temiz" aria-pressed="true" title="Pürüzsüz eğriler, az parça; logo, ikon ve çizimler için">Temiz</button>
-            <button type="button" data-value="sadakat" aria-pressed="false" title="AI netleştirme + 32 renk seviyesi + piksel kenarlı izleme: orijinale en yakın (belirgin fark ≈ %2)">Yüksek sadakat</button>
-            <button type="button" data-value="birebir" aria-pressed="false" title="Orijinalle piksel piksel aynı; büyütünce piksel görünür">Birebir</button>
+            <button type="button" data-value="sadakat" aria-pressed="true" title="AI netleştirme + 32 renk seviyesi + piksel kenarlı izleme: orijinale en yakın (ölçülen belirgin fark %0–2)">Yüksek sadakat</button>
+            <button type="button" data-value="temiz" aria-pressed="false" title="Pürüzsüz eğriler, az parça; logo, ikon, kesim ve düzenleme için. Orijinalden farklıdır (gölgeli çizimde belirgin fark ~%20)">Temiz (az parça)</button>
+            <button type="button" data-value="birebir" aria-pressed="false" title="Kesilmiş görselle piksel piksel aynı; büyütünce piksel görünür">Birebir</button>
           </div>
-          <p class="hint">SVG, kesilmiş ürünü şeffaf zeminde verir; ölçü, kenar boşluğu ve gölge ayarları uygulanmaz. "Yüksek sadakat" için "AI netleştir" açık olmalı.</p>
+          <p class="hint">SVG, kesilmiş ürünü şeffaf zeminde verir; ölçü, kenar boşluğu ve gölge ayarları uygulanmaz. "Yüksek sadakat" AI netleştirmeyi kendiliğinden açar.</p>
         </div>
 
         <div class="actions">
