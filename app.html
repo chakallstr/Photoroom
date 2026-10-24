@@ -100,7 +100,18 @@
           <div class="seg" id="format">
             <button type="button" data-value="png" aria-pressed="true">PNG</button>
             <button type="button" data-value="jpg" aria-pressed="false">JPG</button>
+            <button type="button" data-value="svg" aria-pressed="false">SVG</button>
           </div>
+        </div>
+
+        <div class="field" id="svg-mode-field" hidden>
+          <span class="label">Vektör türü</span>
+          <div class="seg" id="svg-mode">
+            <button type="button" data-value="temiz" aria-pressed="true" title="Pürüzsüz eğriler, az parça; logo, ikon ve çizimler için">Temiz</button>
+            <button type="button" data-value="sadakat" aria-pressed="false" title="AI netleştirme + 32 renk seviyesi + piksel kenarlı izleme: orijinale en yakın (belirgin fark ≈ %2)">Yüksek sadakat</button>
+            <button type="button" data-value="birebir" aria-pressed="false" title="Orijinalle piksel piksel aynı; büyütünce piksel görünür">Birebir</button>
+          </div>
+          <p class="hint">SVG, kesilmiş ürünü şeffaf zeminde verir; ölçü, kenar boşluğu ve gölge ayarları uygulanmaz. "Yüksek sadakat" için "AI netleştir" açık olmalı.</p>
         </div>
 
         <div class="actions">
