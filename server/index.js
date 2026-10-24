@@ -3,11 +3,13 @@ import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { cleanup, openDb } from './db.js';
 import { createPaymentProvider } from './payments/index.js';
+import { createMailer } from './email.js';
 
 const config = loadConfig();
 const db = openDb(config.dbPath);
 const payments = createPaymentProvider(config);
-const server = http.createServer(createApp({ db, config, payments }));
+const mailer = createMailer(config);
+const server = http.createServer(createApp({ db, config, payments, mailer }));
 
 cleanup(db);
 setInterval(() => cleanup(db), 6 * 3600_000).unref();

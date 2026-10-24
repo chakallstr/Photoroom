@@ -24,6 +24,12 @@ export function loadConfig(env = process.env) {
     ipSalt: env.IP_SALT || 'dev-ip-salt',
     // Önündeki güvenilen proxy sayısı (ör. Render/Fly: 1). 0 ise X-Forwarded-For yok sayılır.
     trustProxy: Math.max(0, int(env.TRUST_PROXY, 0)),
+    email: {
+      // 'log': e-postalar gönderilmez, konsola yazılır. 'resend': https://resend.com
+      provider: env.EMAIL_PROVIDER || (env.RESEND_API_KEY ? 'resend' : 'log'),
+      from: env.EMAIL_FROM || '',
+      resendApiKey: env.RESEND_API_KEY || '',
+    },
     payments: {
       provider: env.PAYMENT_PROVIDER || (production ? 'iyzico' : 'mock'),
       iyzico: {
@@ -51,6 +57,9 @@ export function loadConfig(env = process.env) {
   if (production) {
     if (config.payments.provider === 'mock') {
       throw new Error('Üretim ortamında sahte ödeme sağlayıcısı kullanılamaz (PAYMENT_PROVIDER=mock).');
+    }
+    if (config.email.provider === 'log') {
+      console.warn('UYARI: E-posta servisi ayarlı değil (RESEND_API_KEY). Şifre sıfırlama ve sözleşme e-postaları gönderilmeyecek.');
     }
     if (config.ipSalt === 'dev-ip-salt') {
       throw new Error('Üretim ortamında IP_SALT ayarlanmalı.');

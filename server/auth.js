@@ -22,7 +22,7 @@ export async function verifyPassword(password, stored) {
   return crypto.timingSafeEqual(key, expected);
 }
 
-const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
+export const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
 export function createSession(db, userId, now = Date.now()) {
   const token = crypto.randomBytes(32).toString('base64url');

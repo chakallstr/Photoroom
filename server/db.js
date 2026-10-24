@@ -55,6 +55,13 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 );
 CREATE INDEX IF NOT EXISTS subscriptions_user ON subscriptions(user_id);
 
+CREATE TABLE IF NOT EXISTS password_resets (
+  token_hash TEXT PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at INTEGER NOT NULL,
+  used_at    INTEGER
+);
+
 -- Aynı webhook'un iki kez işlenmesini engeller.
 CREATE TABLE IF NOT EXISTS webhook_events (
   id          TEXT PRIMARY KEY,
@@ -98,6 +105,7 @@ export function cleanup(db, now = Date.now(), { usageDays = 30 } = {}) {
   return {
     usage: Number(db.prepare('DELETE FROM usage WHERE day < ?').run(cutoffDay).changes),
     sessions: Number(db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(now).changes),
+    passwordResets: Number(db.prepare('DELETE FROM password_resets WHERE expires_at <= ?').run(now).changes),
     webhookEvents: Number(db.prepare('DELETE FROM webhook_events WHERE received_at < ?').run(now - 90 * 86400_000).changes),
     // Tamamlanmamış ödeme denemeleri (iyzico form HTML'i dahil) 30 gün sonra silinir.
     checkouts: Number(db.prepare("DELETE FROM checkouts WHERE status != 'completed' AND created_at < ?").run(now - 30 * 86400_000).changes),

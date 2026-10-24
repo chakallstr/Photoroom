@@ -3,6 +3,7 @@ import { createApp } from '../server/app.js';
 import { loadConfig } from '../server/config.js';
 import { openDb } from '../server/db.js';
 import { createMockProvider } from '../server/payments/mock.js';
+import { createMailer } from '../server/email.js';
 
 // Testler için bellekte veritabanı, sahte ödeme ve elle ilerletilebilen saat ile sunucu başlatır.
 export async function startTestServer({ env = {}, payments } = {}) {
@@ -15,9 +16,12 @@ export async function startTestServer({ env = {}, payments } = {}) {
   const base = `http://127.0.0.1:${server.address().port}`;
   config.publicUrl = base;
   const provider = payments ?? createMockProvider({ publicUrl: base });
-  server.on('request', createApp({ db, config, payments: provider, now: () => clock.now }));
+  const mailer = createMailer({ email: { provider: 'log' } }, { log: () => {} });
+  server.on('request', createApp({ db, config, payments: provider, mailer, now: () => clock.now }));
   return {
-    base, db, clock, payments: provider,
+    base, db, clock, payments: provider, mailer,
+    // Son gönderilen e-postalar (en yenisi sonda)
+    emails: () => mailer.outbox,
     client: () => new Client(base),
     close: () => new Promise((r) => { server.closeAllConnections(); server.close(r); }),
   };

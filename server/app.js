@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import {
   ANON_COOKIE, SESSION_COOKIE, createRateLimiter, createSession, destroySession,
-  hashPassword, normalizeEmail, userFromSession, validPassword, verifyPassword,
+  hashPassword, normalizeEmail, sha256, userFromSession, validPassword, verifyPassword,
 } from './auth.js';
 import {
   activateSubscription, applySubscriptionEvent, currentSubscription, limitsFor, planFor, subscriptionView,
@@ -10,11 +10,18 @@ import { HttpError, cookie, ipBucket, parseCookies, readBody, readJson, redirect
 import { PERIODS, isPaidPlan } from './plans.js';
 import { consume, today, usageStatus } from './usage.js';
 import { transaction } from './db.js';
+import { createMailer } from './email.js';
+import {
+  accountDeletedEmail, passwordResetEmail, paymentFailedEmail, subscriptionCanceledEmail, subscriptionStartedEmail,
+} from './emails.js';
 
 const RECONCILE_WINDOW_MS = 86400_000;
 const RECONCILE_EVERY_MS = 2 * 60_000;
 
-export function createApp({ db, config, payments, now = () => Date.now() }) {
+const RESET_TTL_MS = 3600_000;
+const GRACE_MS = 3 * 86400_000;
+
+export function createApp({ db, config, payments, mailer = createMailer({ email: { provider: 'log' } }, { log: () => {} }), now = () => Date.now() }) {
   const secure = config.publicUrl.startsWith('https://');
   const loginLimiter = createRateLimiter({ max: 10, windowMs: 15 * 60_000 });
   const routes = new Map();
@@ -82,6 +89,17 @@ export function createApp({ db, config, payments, now = () => Date.now() }) {
     return cookie(SESSION_COOKIE, token, { maxAge, secure });
   }
 
+  // E-posta gönderilemezse asıl işlem (ödeme, iptal) bozulmasın; hata günlüğe yazılır.
+  async function sendEmail(message) {
+    try {
+      await mailer.send(message);
+    } catch (err) {
+      console.error(`E-posta gönderilemedi (${message.subject} → ${message.to}): ${err.message}`);
+    }
+  }
+
+  const emailOf = (userId) => db.prepare('SELECT email FROM users WHERE id = ?').get(userId)?.email;
+
   // ---------- Hesap ----------
 
   route('GET', '/api/me', async (req, res, ctx) => {
@@ -133,6 +151,49 @@ export function createApp({ db, config, payments, now = () => Date.now() }) {
     sendJson(res, 200, { ok: true });
   });
 
+  // Şifremi unuttum: hesap var mı yok mu belli olmasın diye her zaman aynı yanıt döner.
+  route('POST', '/api/auth/forgot', async (req, res) => {
+    const body = await readJson(req);
+    const email = normalizeEmail(body.email);
+    if (!email) throw new HttpError(400, 'bad_email', 'Geçerli bir e-posta adresi gir.');
+    if (!loginLimiter.take(`forgot:${clientIp(req)}`) || !loginLimiter.take(`forgot:${email}`)) {
+      throw new HttpError(429, 'too_many', 'Çok fazla deneme. Biraz sonra tekrar dene.');
+    }
+    const user = db.prepare('SELECT id, email FROM users WHERE email = ?').get(email);
+    if (user) {
+      const token = crypto.randomBytes(32).toString('base64url');
+      db.prepare('INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES (?, ?, ?)')
+        .run(sha256(token), user.id, now() + RESET_TTL_MS);
+      await sendEmail(passwordResetEmail({
+        to: user.email,
+        link: `${config.publicUrl}/app.html#sifre-sifirla=${token}`,
+        publicUrl: config.publicUrl,
+      }));
+    }
+    sendJson(res, 200, { ok: true, message: 'Bu e-postayla bir hesap varsa şifre sıfırlama bağlantısı gönderildi.' });
+  });
+
+  route('POST', '/api/auth/reset', async (req, res, ctx) => {
+    const body = await readJson(req);
+    if (!validPassword(body.password)) throw new HttpError(400, 'weak_password', 'Şifre en az 8 karakter olmalı.');
+    if (!loginLimiter.take(`reset:${clientIp(req)}`)) throw new HttpError(429, 'too_many', 'Çok fazla deneme. Biraz sonra tekrar dene.');
+    const hash = sha256(String(body.token ?? ''));
+    const hashPw = await hashPassword(body.password);
+    // Bağlantı tek kullanımlık: kontrol ve "kullanıldı" işareti aynı işlemde.
+    const userId = transaction(db, () => {
+      const row = db.prepare('SELECT user_id FROM password_resets WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?').get(hash, now());
+      if (!row) return null;
+      db.prepare('UPDATE password_resets SET used_at = ? WHERE token_hash = ?').run(now(), hash);
+      db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPw, row.user_id);
+      db.prepare('DELETE FROM sessions WHERE user_id = ?').run(row.user_id);
+      return row.user_id;
+    });
+    if (!userId) throw new HttpError(400, 'bad_token', 'Bağlantı geçersiz ya da süresi dolmuş. Yeni bir sıfırlama bağlantısı iste.');
+    const s = createSession(db, userId, now());
+    ctx.setCookies.push(sessionCookie(s.token, s.maxAge));
+    sendJson(res, 200, meBody(context(req, s.token)));
+  });
+
   // Hassas hesap işlemlerinden önce mevcut şifre tekrar istenir.
   async function confirmPassword(req, user, password) {
     if (!loginLimiter.take(`confirm:${user.id}`)) throw new HttpError(429, 'too_many', 'Çok fazla deneme. Biraz sonra tekrar dene.');
@@ -167,12 +228,14 @@ export function createApp({ db, config, payments, now = () => Date.now() }) {
         throw new HttpError(502, 'provider_error', 'Abonelik iptal edilemediği için hesap silinemedi. Biraz sonra tekrar dene.');
       }
     }
+    const email = emailOf(user.id);
     transaction(db, () => {
       db.prepare('DELETE FROM usage WHERE subject = ?').run(`u:${user.id}`);
       // Oturumlar, ödeme kayıtları ve abonelikler ON DELETE CASCADE ile silinir.
       db.prepare('DELETE FROM users WHERE id = ?').run(user.id);
     });
     ctx.setCookies.push(sessionCookie('', 0));
+    await sendEmail(accountDeletedEmail({ to: email, publicUrl: config.publicUrl }));
     sendJson(res, 200, { ok: true });
   });
 
@@ -246,13 +309,16 @@ ${checkout.form_html}</main></body></html>`);
   });
 
   // Sağlayıcıdaki aboneliği iptal eder; yerelde dönem sonuna kadar geçerli kalır.
-  async function cancelAtProvider(sub) {
+  async function cancelAtProvider(sub, { notify = false } = {}) {
     const result = await payments.cancel(sub.provider_ref).catch((err) => ({ ok: false, message: err.message }));
     if (!result.ok) {
       console.error(`Abonelik iptal edilemedi (${sub.provider} ${sub.provider_ref}): ${result.message}`);
       return false;
     }
     applySubscriptionEvent(db, sub.provider, { type: 'canceled', subscriptionRef: sub.provider_ref }, now());
+    if (notify) {
+      await sendEmail(subscriptionCanceledEmail({ to: emailOf(sub.user_id), plan: sub.plan, periodEnd: sub.current_period_end, publicUrl: config.publicUrl }));
+    }
     return true;
   }
 
@@ -283,6 +349,11 @@ ${checkout.form_html}</main></body></html>`);
       period: checkout.period,
     }, now());
     db.prepare("UPDATE checkouts SET status = 'completed', provider_ref = ? WHERE token = ?").run(result.subscriptionRef, token);
+    const sub = db.prepare('SELECT * FROM subscriptions WHERE provider = ? AND provider_ref = ?').get(payments.name, result.subscriptionRef);
+    await sendEmail(subscriptionStartedEmail({
+      to: emailOf(checkout.user_id), plan: checkout.plan, period: checkout.period,
+      startedAt: sub.created_at, periodEnd: sub.current_period_end, publicUrl: config.publicUrl, publicDir: config.publicDir,
+    }));
     // Kullanıcının başka açık aboneliği varsa (ör. iki sekmeden ödeme) eskisini iptal et; çift çekim olmasın.
     const others = db.prepare("SELECT * FROM subscriptions WHERE user_id = ? AND provider_ref != ? AND status IN ('active', 'unpaid')")
       .all(checkout.user_id, result.subscriptionRef);
@@ -348,7 +419,12 @@ ${checkout.form_html}</main></body></html>`);
       console.error(`Webhook bilinmeyen aboneliğe ait (${payments.name} ${event.subscriptionRef}); elle kontrol gerekli.`);
       throw new HttpError(500, 'unknown_subscription', 'Abonelik bulunamadı.');
     }
+    const before = db.prepare('SELECT * FROM subscriptions WHERE provider = ? AND provider_ref = ?').get(payments.name, event.subscriptionRef);
     applySubscriptionEvent(db, payments.name, event, now());
+    const after = db.prepare('SELECT * FROM subscriptions WHERE id = ?').get(before.id);
+    if (after.status === 'unpaid' && before.status !== 'unpaid') {
+      await sendEmail(paymentFailedEmail({ to: emailOf(after.user_id), plan: after.plan, graceEnd: after.current_period_end + GRACE_MS, publicUrl: config.publicUrl }));
+    }
     if (event.id) db.prepare('INSERT OR IGNORE INTO webhook_events (id, received_at) VALUES (?, ?)').run(event.id, now());
     sendJson(res, 200, { ok: true });
   });
@@ -360,7 +436,7 @@ ${checkout.form_html}</main></body></html>`);
     const open = db.prepare("SELECT * FROM subscriptions WHERE user_id = ? AND status IN ('active', 'unpaid')").all(user.id);
     if (!open.length) throw new HttpError(404, 'no_subscription', 'İptal edilecek abonelik yok.');
     for (const sub of open) {
-      if (!(await cancelAtProvider(sub))) throw new HttpError(502, 'provider_error', 'Ödeme sağlayıcısı iptali onaylamadı.');
+      if (!(await cancelAtProvider(sub, { notify: true }))) throw new HttpError(502, 'provider_error', 'Ödeme sağlayıcısı iptali onaylamadı.');
     }
     sendJson(res, 200, meBody(context(req)));
   });

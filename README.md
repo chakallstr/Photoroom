@@ -55,6 +55,7 @@ Paket tanımlarının tek kaynağı `server/plans.js`.
 | `GET/POST /api/billing/callback` | iyzico dönüşü; ödeme iyzico'dan doğrulanır |
 | `POST /api/billing/webhook` | iyzico abonelik bildirimleri (imza doğrulamalı) |
 | `POST /api/billing/cancel` | Aboneliği iptal eder (dönem sonuna kadar geçerli) |
+| `POST /api/auth/forgot` · `reset` | Şifremi unuttum: e-postaya 1 saatlik, tek kullanımlık bağlantı |
 | `POST /api/account/password` | Şifre değiştirir (diğer oturumlar kapanır) |
 | `POST /api/account/delete` | Hesabı ve verileri siler, aboneliği iptal eder (KVKK) |
 | `GET /api/health` | Sağlık kontrolü |
@@ -87,6 +88,11 @@ Sandbox'ta mutlaka doğrulanması gerekenler (dokümanda belirsiz ya da çelişk
 - Webhook imzasındaki alan sırası (dokümandaki kod örnekleri `merchantId + secretKey + ...` diyor, metin `secretKey` ile başlıyor).
 - GET isteklerinde imzaya gövde eklenmemesi (doküman böyle diyor, resmi SDK `{}` ekliyor).
 
+## E-postalar
+
+Şifre sıfırlama, satın alma (sipariş özeti + mesafeli satış sözleşmesinin tam metni), iptal, ödeme alınamadı
+ve hesap silindi e-postaları gönderilir. Metinler `server/emails.js` içinde. Geliştirmede e-postalar konsola yazılır.
+
 ## Yayına alma (Render)
 
 1. Render'da **New → Blueprint** ile bu repoyu seç; `render.yaml` servisi ve 1 GB kalıcı diski oluşturur.
@@ -98,8 +104,8 @@ Başka bir platformda `Dockerfile` kullanılabilir; `/data` klasörü kalıcı b
 ## Yayından önce yapılacaklar
 
 - `public/yasal/` altındaki köşeli parantezli alanları doldur, metinleri hukukçuya kontrol ettir ve sayfalardaki taslak uyarısını kaldır.
-- E-posta gönderimi yok: mesafeli satış sözleşmesinin alıcıya kalıcı veri saklayıcısıyla (e-posta) iletilmesi,
-  fiyat değişikliği bildirimi ve "şifremi unuttum" için bir e-posta servisi (ör. Resend, Postmark, SMTP) bağlanmalı.
+- E-posta servisi: [Resend](https://resend.com) hesabı aç, alan adını doğrula, `RESEND_API_KEY` ve `EMAIL_FROM` ayarla.
+  Ayarlanmazsa şifre sıfırlama ve sözleşme e-postaları gönderilmez (yalnızca günlüğe yazılır).
 - İşletme paketindeki ekip hesabı (5 kullanıcı) henüz yok; fiyat sayfasında "yakında" olarak gösteriliyor.
 
 ## Arka plan silme
