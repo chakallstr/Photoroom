@@ -196,6 +196,20 @@ function drawOriginal() {
 function setStatus(t, err = false) { $('#status').textContent = t; $('#status').classList.toggle('err', err); }
 const kb = (n) => (n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(2)} MB`);
 
+function renderAt(img, svg, W, H) {
+  const vb = /viewBox="0 0 (\d+) (\d+)"/.exec(svg);
+  let w = vb ? +vb[1] : W, h = vb ? +vb[2] : H;
+  if (w <= W) return pixelsOf(img, W, H, false);
+  let c = document.createElement('canvas'); c.width = w; c.height = h;
+  c.getContext('2d').drawImage(img, 0, 0, w, h);
+  while (w > W * 1.01) {
+    const nw = Math.max(W, Math.round(w / 2)), nh = Math.max(H, Math.round(h / 2));
+    const n = document.createElement('canvas'); n.width = nw; n.height = nh;
+    const x = n.getContext('2d'); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high'; x.drawImage(c, 0, 0, nw, nh);
+    c = n; w = nw; h = nh;
+  }
+  return c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W, H).data;
+}
 function pixelsOf(img, w, h, smooth = true) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const x = c.getContext('2d', { willReadFrequently: true }); x.imageSmoothingEnabled = smooth; x.imageSmoothingQuality = 'high';
@@ -268,8 +282,9 @@ async function showSvg(out, ms) {
   const img = $('#svgImg');
   await new Promise((r) => { img.onload = r; img.src = url; });
   applyZoom();
-  // SVG'yi orijinal boyutta geri çiz ve karşılaştır.
-  const got = pixelsOf(img, W, H, false);
+  // SVG'yi orijinal boyutta geri çiz ve karşılaştır. viewBox orijinalden büyükse (netleştirilmiş kaynak) önce
+  // viewBox boyutunda çizilir, sonra ikiye ikiye küçültülür (kutu ortalaması; tek adımda küçültme örnek atlar).
+  const got = renderAt(img, out.svg, W, H);
   const diff = document.createElement('canvas'); const dc = $('#diff'); dc.width = W; dc.height = H;
   const dctx = dc.getContext('2d'); const dimg = dctx.createImageData(W, H);
   let differ = 0, strong = 0, union = 0, inter = 0, dE = 0, nC = 0, total = 0;
