@@ -85,5 +85,63 @@ export function removeIslands(rgba, width, height, { threshold = 128, minRatio =
 export function refineMask(rgba, width, height) {
   sharpenAlpha(rgba);
   removeIslands(rgba, width, height);
+  defringe(rgba, width, height);
+  return rgba;
+}
+
+// Kenar rengi temizliği: ürün kenarındaki pikseller çoğu zaman zeminin rengini taşır
+// (sarı zeminde kulaklığın etrafında sarı hare gibi). Kenara `band` piksel yakın her görünür
+// pikselin rengi, biraz daha içerideki ürün piksellerinin ortalamasıyla değiştirilir.
+export function defringe(rgba, width, height, { band = 3, radius = 4 } = {}) {
+  const n = width * height;
+  const INF = 255;
+  const dist = new Uint8Array(n).fill(INF);
+  // Saydam piksellerden başlayan çok kaynaklı BFS ile "kenara uzaklık".
+  const queue = new Int32Array(n);
+  let head = 0, tail = 0;
+  for (let p = 0; p < n; p++) {
+    if (rgba[p * 4 + 3] < 128) { dist[p] = 0; queue[tail++] = p; }
+  }
+  if (tail === 0 || tail === n) return rgba;
+  const limit = band + radius + 1;
+  while (head < tail) {
+    const p = queue[head++];
+    const d = dist[p];
+    if (d >= limit) continue;
+    const x = p % width;
+    const y = (p - x) / width;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+      const q = ny * width + nx;
+      if (dist[q] > d + 1) { dist[q] = d + 1; queue[tail++] = q; }
+    }
+  }
+  const src = rgba.slice();
+  for (let p = 0; p < n; p++) {
+    const i = p * 4;
+    if (src[i + 3] === 0 || (dist[p] > band && src[i + 3] >= 128)) continue;
+    const x = p % width;
+    const y = (p - x) / width;
+    let r = 0, g = 0, b = 0, count = 0;
+    for (let dy = -radius; dy <= radius; dy++) {
+      const ny = y + dy;
+      if (ny < 0 || ny >= height) continue;
+      for (let dx = -radius; dx <= radius; dx++) {
+        const nx = x + dx;
+        if (nx < 0 || nx >= width) continue;
+        const q = ny * width + nx;
+        if (dist[q] > band && src[q * 4 + 3] === 255) {
+          const j = q * 4;
+          r += src[j]; g += src[j + 1]; b += src[j + 2]; count++;
+        }
+      }
+    }
+    if (count) {
+      rgba[i] = Math.round(r / count);
+      rgba[i + 1] = Math.round(g / count);
+      rgba[i + 2] = Math.round(b / count);
+    }
+  }
   return rgba;
 }

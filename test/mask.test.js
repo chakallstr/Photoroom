@@ -60,3 +60,21 @@ test('büyük görselde makul sürede çalışır (4 MP)', () => {
   const ms = performance.now() - t0;
   assert.ok(ms < 3000, `${ms.toFixed(0)} ms`);
 });
+
+test('kenar rengi temizliği: kenardaki zemin rengi içerideki ürün rengiyle değişir', async () => {
+  const { defringe } = await import('../public/assets/mask.js');
+  const w = 20, h = 20;
+  const rgba = new Uint8ClampedArray(w * h * 4);
+  // Sarı zemin (saydam), ortada siyah ürün, ürünün 1 piksellik kenarı sarımsı.
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4;
+    const inside = x >= 5 && x <= 14 && y >= 5 && y <= 14;
+    const edge = inside && (x === 5 || x === 14 || y === 5 || y === 14);
+    rgba.set(edge ? [200, 180, 20, 255] : inside ? [10, 10, 10, 255] : [255, 210, 0, 0], i);
+  }
+  defringe(rgba, w, h);
+  const px = (x, y) => Array.from(rgba.slice((y * w + x) * 4, (y * w + x) * 4 + 4));
+  assert.deepEqual(px(5, 9), [10, 10, 10, 255], 'kenar ürün rengini almalı');
+  assert.deepEqual(px(9, 9), [10, 10, 10, 255], 'iç kısım değişmemeli');
+  assert.equal(px(0, 0)[3], 0, 'zemin saydam kalmalı');
+});

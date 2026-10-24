@@ -115,8 +115,14 @@ Tamamen tarayıcıda yapılır ([transformers.js](https://github.com/huggingface
 
 | Tarayıcı | Model | Lisans | İndirme (ilk sefer) |
 |---|---|---|---|
-| WebGPU var | BiRefNet lite | MIT | ~115 MB (fp16) / ~215 MB (fp32) |
-| WebGPU yok | ormbg (uint8) | Apache 2.0 | ~45 MB |
+| WebGPU var | BiRefNet lite 1024 | MIT | ~115 MB (fp16) / ~215 MB (fp32) |
+| WebGPU yok | BiRefNet lite 512 (fp16) | MIT | ~98 MB |
+
+Model çıktısı tarayıcıda temizlenir (`public/assets/mask.js`): sisli yarı saydam alanlar netleştirilir,
+ürüne bağlı olmayan kırıntılar silinir ve kenara sinen zemin rengi giderilir.
+
+WebGPU olmayan tarayıcılar için model seçimi 8 gerçek ürün fotoğrafıyla yapıldı: BiRefNet lite 512, ormbg'den
+belirgin şekilde iyi ve MVANet'e yakın sonuç verdi; görsel başına ~9 sn (MVANet ~46 sn). ISNet bu kütüphaneyle çalışmadı.
 
 Bilinen sınır: işlem tarayıcıda olduğu için günlük limit ve 1080 px sınırı, tarayıcı kodunu değiştiren biri tarafından aşılabilir.
 Asıl gelir koruması toplu işleme, tam çözünürlük ve kolaylıktır.
