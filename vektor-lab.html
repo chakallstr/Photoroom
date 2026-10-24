@@ -84,9 +84,9 @@ textarea { width: 100%; height: 110px; font: 12px/1.4 var(--mono); background: v
     <div style="display:grid;gap:4px">
       <span class="label">Mod</span>
       <div class="seg" id="mode">
-        <button type="button" data-v="exact" aria-pressed="true" title="Orijinalle piksel piksel aynı">Kayıpsız</button>
-        <button type="button" data-v="logo" aria-pressed="false">Logo</button>
-        <button type="button" data-v="cizim" aria-pressed="false">Çizim</button>
+        <button type="button" data-v="cizim" aria-pressed="true" title="Pürüzsüz eğriler; gölgeli çizimler için">Çizim</button>
+        <button type="button" data-v="logo" aria-pressed="false" title="Pürüzsüz eğriler; az renkli logo ve ikonlar">Logo</button>
+        <button type="button" data-v="exact" aria-pressed="false" title="Orijinalle piksel piksel aynı; kenarlar piksel basamaklı görünür">Kayıpsız</button>
         <button type="button" data-v="detayli" aria-pressed="false">Detaylı</button>
         <button type="button" data-v="siyahBeyaz" aria-pressed="false">Siyah-beyaz</button>
       </div>
@@ -148,7 +148,7 @@ try { await V.initVectorizer(); } catch (e) { document.getElementById('status').
 /*SON*/
 const SAMPLE = 'assets/ornek-logo.jpg';
 const $ = (s) => document.querySelector(s);
-const state = { mode: 'exact', zoom: 1, cutout: false, img: null, name: 'ornek-logo', W: 0, H: 0, src: null, svg: '' };
+const state = { mode: 'cizim', zoom: 1, cutout: false, img: null, name: 'ornek-logo', W: 0, H: 0, src: null, svg: '' };
 
 function setStatus(t, err = false) { $('#status').textContent = t; $('#status').classList.toggle('err', err); }
 const kb = (n) => (n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(2)} MB`);
