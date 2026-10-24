@@ -1,0 +1,39 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# Render panelinde "New → Blueprint" ile bu repoyu seç. Gizli değerleri panelden gir.
+services:
+  - type: web
+    name: photoroot
+    runtime: docker
+    plan: starter            # Kalıcı disk ücretsiz planda yok
+    healthCheckPath: /api/health
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "1"
+      - key: PUBLIC_URL
+        sync: false          # ör. https://photoroot.app
+      - key: IP_SALT
+        generateValue: true
+      - key: PAYMENT_PROVIDER
+        value: iyzico
+      - key: IYZICO_BASE_URL
+        value: https://sandbox-api.iyzipay.com
+      - key: IYZICO_API_KEY
+        sync: false
+      - key: IYZICO_SECRET_KEY
+        sync: false
+      - key: IYZICO_MERCHANT_ID
+        sync: false
+      - key: IYZICO_PLAN_PRO_MONTHLY
+        sync: false
+      - key: IYZICO_PLAN_PRO_YEARLY
+        sync: false
+      - key: IYZICO_PLAN_BUSINESS_MONTHLY
+        sync: false
+      - key: IYZICO_PLAN_BUSINESS_YEARLY
+        sync: false

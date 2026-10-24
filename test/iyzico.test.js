@@ -33,7 +33,7 @@ async function registered() {
 }
 
 async function subscribe(c, plan = 'pro', period = 'monthly') {
-  const start = await c.post('/api/billing/checkout', { plan, period, customer: CUSTOMER });
+  const start = await c.post('/api/billing/checkout', { acceptTerms: true, plan, period, customer: CUSTOMER });
   assert.equal(start.status, 200, JSON.stringify(start.data));
   const token = new URL(start.data.url).searchParams.get('token');
   return { token, start };
@@ -66,7 +66,7 @@ test('müşteri bilgileri doğrulanır ve telefon +90 biçimine çevrilir', () =
 
 test('eksik fatura bilgisiyle ödeme başlatılamaz', async () => {
   const c = await registered();
-  const r = await c.post('/api/billing/checkout', { plan: 'pro', period: 'monthly', customer: { name: 'Ayşe' } });
+  const r = await c.post('/api/billing/checkout', { acceptTerms: true, plan: 'pro', period: 'monthly', customer: { name: 'Ayşe' } });
   assert.equal(r.status, 400);
   assert.equal(r.data.error, 'bad_customer');
   assert.match(r.data.message, /TC kimlik no/);
@@ -130,7 +130,7 @@ test('ödenen plan beklenenle eşleşmezse reddedilir', async () => {
 test('iyzico hata dönerse kullanıcıya anlaşılır hata verilir', async () => {
   const c = await registered();
   fake.state.failInitialize = true;
-  const r = await c.post('/api/billing/checkout', { plan: 'pro', period: 'monthly', customer: CUSTOMER });
+  const r = await c.post('/api/billing/checkout', { acceptTerms: true, plan: 'pro', period: 'monthly', customer: CUSTOMER });
   assert.equal(r.status, 502);
   assert.equal(r.data.message, 'Sistem hatası');
 });
@@ -218,6 +218,29 @@ test('hiçbir kullanıcıya ait olmayan abonelik webhook\'u işlendi sayılmaz',
   }
   assert.match(errors.join('\n'), /bilinmeyen aboneliğe/);
   assert.equal(t.db.prepare('SELECT COUNT(*) n FROM webhook_events').get().n, 0);
+});
+
+test('hesap silinince iyzico aboneliği de iptal edilir; iptal edilemezse hesap silinmez', async () => {
+  const c = await registered();
+  const { token } = await subscribe(c);
+  await t.client().request('POST', '/api/billing/callback', { form: { token } });
+  const ref = t.db.prepare('SELECT provider_ref FROM subscriptions').get().provider_ref;
+
+  fake.state.subscriptions.delete(ref); // iyzico iptali reddedecek
+  const errors = [];
+  const orig = console.error;
+  console.error = (...a) => errors.push(a.join(' '));
+  try {
+    assert.equal((await c.post('/api/account/delete', { password: 'gizli-sifre-1' })).status, 502);
+  } finally {
+    console.error = orig;
+  }
+  assert.equal(t.db.prepare('SELECT COUNT(*) n FROM users').get().n, 1);
+
+  fake.state.subscriptions.set(ref, { status: 'ACTIVE', orders: [] });
+  assert.equal((await c.post('/api/account/delete', { password: 'gizli-sifre-1' })).status, 200);
+  assert.equal(fake.state.subscriptions.get(ref).status, 'CANCELED');
+  assert.equal(t.db.prepare('SELECT COUNT(*) n FROM users').get().n, 0);
 });
 
 test('iptal isteği iyzico\'ya gider, dönem sonuna kadar Pro kalır', async () => {

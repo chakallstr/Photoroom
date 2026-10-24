@@ -9,7 +9,12 @@ const settings = {
   padding: 8,
   shadow: true,
   format: 'png',
+  logo: null, // HTMLImageElement
+  logoPos: 'br',
+  logoSize: 18, // görselin kısa kenarına göre yüzde
 };
+
+const LOGO_KEY = 'photoroot-logo';
 
 const items = new Map(); // id -> { file, name, el, cutout, bbox, status }
 const queue = [];
@@ -44,6 +49,8 @@ function onModelProgress(p) {
   fileProgress.set(p.file, { loaded: p.loaded, total: p.total });
   let loaded = 0, total = 0;
   for (const f of fileProgress.values()) { loaded += f.loaded; total += f.total; }
+  // Önce küçük ayar dosyaları gelir; model dosyası başlamadan "0 / 0 MB" göstermeyelim.
+  if (total < 1048576) return setStatus('Yapay zekâ modeli hazırlanıyor…', 0);
   const mb = (n) => (n / 1048576).toFixed(0);
   setStatus(`Yapay zekâ modeli indiriliyor (yalnızca ilk sefer) · ${mb(loaded)} / ${mb(total)} MB`, loaded / total);
 }
@@ -245,7 +252,24 @@ function compose(item, maxSide = Infinity) {
     ctx.shadowOffsetY = s * 0.02 * k;
   }
   ctx.drawImage(cutout, sx, sy, sw, sh, dx, dy, dw, dh);
+  if (settings.logo && account.limits()?.brand) drawLogo(ctx, W, H);
   return canvas;
+}
+
+// Logoyu seçilen köşeye, kenardan biraz içeride çizer.
+function drawLogo(ctx, W, H) {
+  const img = settings.logo;
+  const short = Math.min(W, H);
+  const lw = short * settings.logoSize / 100;
+  // Boyutsuz SVG'lerde naturalWidth 0 olabilir; o zaman kare kabul edilir.
+  const lh = img.naturalWidth && img.naturalHeight ? lw * img.naturalHeight / img.naturalWidth : lw;
+  const m = short * 0.04;
+  const x = settings.logoPos.endsWith('l') ? m : W - m - lw;
+  const y = settings.logoPos.startsWith('t') ? m : H - m - lh;
+  ctx.save();
+  ctx.shadowColor = 'transparent';
+  ctx.drawImage(img, x, y, lw, lh);
+  ctx.restore();
 }
 
 function renderPreview(item) {
@@ -377,9 +401,15 @@ function updateUsage() {
   el.append(a);
 }
 
+let lastPlan = null;
 account.onChange(() => {
   updateSizeHint();
   updateUsage();
+  const plan = account.limits()?.plan ?? null;
+  if (plan !== lastPlan) {
+    lastPlan = plan;
+    rerenderAll(); // paket değişince logo görünürlüğü değişebilir
+  }
   // Hak açıldıysa (ör. Pro'ya geçildi ya da yeni gün) bekleyen görselleri tekrar sıraya al.
   const limits = account.limits();
   const usage = account.usage();
@@ -400,6 +430,65 @@ $('#shadow').addEventListener('change', (e) => {
   settings.shadow = e.target.checked;
   rerenderAll();
 });
+
+// ---------- Logo (İşletme paketi) ----------
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+function showLogo(img) {
+  settings.logo = img;
+  $('#logo-preview').src = img?.src ?? '';
+  $('#logo-preview').hidden = !img;
+  $('#logo-clear').hidden = !img;
+  $('#logo-options').hidden = !img;
+  rerenderAll();
+}
+
+$('#logo-pick').addEventListener('click', (e) => {
+  if (account.limits()?.brand) return;
+  e.preventDefault();
+  account.openUpgrade('Görsellere logo eklemek İşletme paketinde.', { plan: 'business' });
+});
+$('#logo-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const dataUrl = await new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(file); });
+  try {
+    showLogo(await loadImage(dataUrl));
+  } catch {
+    return account.toast('Logo okunamadı.');
+  }
+  // Bir sonraki ziyaret için hatırla (tarayıcı izin vermezse sorun değil).
+  try { localStorage.setItem(LOGO_KEY, dataUrl); } catch {}
+});
+$('#logo-clear').addEventListener('click', () => {
+  showLogo(null);
+  try { localStorage.removeItem(LOGO_KEY); } catch {}
+});
+$('#logo-pos').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-value]');
+  if (!btn) return;
+  settings.logoPos = btn.dataset.value;
+  $('#logo-pos').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+  rerenderAll();
+});
+$('#logo-size').addEventListener('input', (e) => {
+  settings.logoSize = Number(e.target.value);
+  $('#logo-size-out').textContent = `%${settings.logoSize}`;
+  rerenderAll();
+});
+try {
+  const saved = localStorage.getItem(LOGO_KEY);
+  if (saved) loadImage(saved).then(showLogo, () => {});
+} catch {}
 
 $('#download-all').addEventListener('click', downloadAll);
 $('#clear-all').addEventListener('click', () => [...items.keys()].forEach(removeItem));

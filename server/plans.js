@@ -5,6 +5,7 @@ export const PLANS = {
     dailyLimit: 10,
     maxSide: 1080,
     batch: false,
+    brand: false,
     seats: 1,
     prices: null,
   },
@@ -13,6 +14,7 @@ export const PLANS = {
     dailyLimit: null,
     maxSide: null,
     batch: true,
+    brand: false,
     seats: 1,
     prices: { monthly: 99, yearly: 990 },
   },
@@ -21,6 +23,8 @@ export const PLANS = {
     dailyLimit: null,
     maxSide: null,
     batch: true,
+    // Görsellere marka logosu ekleme
+    brand: true,
     seats: 5,
     prices: { monthly: 249, yearly: 2490 },
   },
@@ -39,5 +43,6 @@ export function limitsFor(plan, overrides = {}) {
     dailyLimit: plan === 'free' && overrides.freeDailyLimit != null ? overrides.freeDailyLimit : p.dailyLimit,
     maxSide: p.maxSide,
     batch: p.batch,
+    brand: p.brand,
   };
 }

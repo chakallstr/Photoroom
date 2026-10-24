@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS checkouts (
   form_html  TEXT,
   provider_ref TEXT,
   last_checked_at INTEGER,
+  -- Mesafeli satış sözleşmesi ve ön bilgilendirme formunun onaylandığı an
+  terms_accepted_at INTEGER,
   created_at INTEGER NOT NULL
 );
 
@@ -75,6 +77,7 @@ function migrate(db) {
   const checkouts = columns('checkouts');
   if (!checkouts.has('provider_ref')) db.exec('ALTER TABLE checkouts ADD COLUMN provider_ref TEXT');
   if (!checkouts.has('last_checked_at')) db.exec('ALTER TABLE checkouts ADD COLUMN last_checked_at INTEGER');
+  if (!checkouts.has('terms_accepted_at')) db.exec('ALTER TABLE checkouts ADD COLUMN terms_accepted_at INTEGER');
 }
 
 export function transaction(db, fn) {
@@ -87,4 +90,16 @@ export function transaction(db, fn) {
     db.exec('ROLLBACK');
     throw err;
   }
+}
+
+// Gizlilik politikasında söz verilen saklama sürelerini uygular. Sunucu açılışında ve periyodik olarak çalışır.
+export function cleanup(db, now = Date.now(), { usageDays = 30 } = {}) {
+  const cutoffDay = new Date(now - usageDays * 86400_000).toISOString().slice(0, 10);
+  return {
+    usage: Number(db.prepare('DELETE FROM usage WHERE day < ?').run(cutoffDay).changes),
+    sessions: Number(db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(now).changes),
+    webhookEvents: Number(db.prepare('DELETE FROM webhook_events WHERE received_at < ?').run(now - 90 * 86400_000).changes),
+    // Tamamlanmamış ödeme denemeleri (iyzico form HTML'i dahil) 30 gün sonra silinir.
+    checkouts: Number(db.prepare("DELETE FROM checkouts WHERE status != 'completed' AND created_at < ?").run(now - 30 * 86400_000).changes),
+  };
 }

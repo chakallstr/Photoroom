@@ -9,6 +9,7 @@ import {
 import { HttpError, cookie, ipBucket, parseCookies, readBody, readJson, redirect, sendJson, serveStatic } from './http.js';
 import { PERIODS, isPaidPlan } from './plans.js';
 import { consume, today, usageStatus } from './usage.js';
+import { transaction } from './db.js';
 
 const RECONCILE_WINDOW_MS = 86400_000;
 const RECONCILE_EVERY_MS = 2 * 60_000;
@@ -132,6 +133,54 @@ export function createApp({ db, config, payments, now = () => Date.now() }) {
     sendJson(res, 200, { ok: true });
   });
 
+  // Hassas hesap işlemlerinden önce mevcut şifre tekrar istenir.
+  async function confirmPassword(req, user, password) {
+    if (!loginLimiter.take(`confirm:${user.id}`)) throw new HttpError(429, 'too_many', 'Çok fazla deneme. Biraz sonra tekrar dene.');
+    const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(user.id);
+    if (!(await verifyPassword(String(password ?? ''), row.password_hash))) {
+      throw new HttpError(401, 'bad_password', 'Şifre hatalı.');
+    }
+  }
+
+  route('POST', '/api/account/password', async (req, res, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    await confirmPassword(req, user, body.currentPassword);
+    if (!validPassword(body.newPassword)) throw new HttpError(400, 'weak_password', 'Yeni şifre en az 8 karakter olmalı.');
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(await hashPassword(body.newPassword), user.id);
+    // Diğer cihazlardaki oturumlar kapanır, bu cihaz için yeni oturum açılır.
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
+    const s = createSession(db, user.id, now());
+    ctx.setCookies.push(sessionCookie(s.token, s.maxAge));
+    sendJson(res, 200, { ok: true });
+  });
+
+  // KVKK: kullanıcı hesabını ve kişisel verilerini silebilir.
+  route('POST', '/api/account/delete', async (req, res, ctx) => {
+    const user = requireUser(ctx);
+    const body = await readJson(req);
+    await confirmPassword(req, user, body.password);
+    // Önce açık abonelikler sağlayıcıda iptal edilir; aksi halde silinen hesaptan para çekilmeye devam eder.
+    const open = db.prepare("SELECT * FROM subscriptions WHERE user_id = ? AND status IN ('active', 'unpaid')").all(user.id);
+    for (const sub of open) {
+      if (!(await cancelAtProvider(sub))) {
+        throw new HttpError(502, 'provider_error', 'Abonelik iptal edilemediği için hesap silinemedi. Biraz sonra tekrar dene.');
+      }
+    }
+    transaction(db, () => {
+      db.prepare('DELETE FROM usage WHERE subject = ?').run(`u:${user.id}`);
+      // Oturumlar, ödeme kayıtları ve abonelikler ON DELETE CASCADE ile silinir.
+      db.prepare('DELETE FROM users WHERE id = ?').run(user.id);
+    });
+    ctx.setCookies.push(sessionCookie('', 0));
+    sendJson(res, 200, { ok: true });
+  });
+
+  route('GET', '/api/health', (req, res) => {
+    db.prepare('SELECT 1').get();
+    sendJson(res, 200, { ok: true });
+  });
+
   // ---------- Kullanım hakkı ----------
 
   route('POST', '/api/usage', async (req, res, ctx) => {
@@ -159,6 +208,9 @@ export function createApp({ db, config, payments, now = () => Date.now() }) {
       throw new HttpError(400, 'bad_plan', 'Geçersiz paket.');
     }
     if (ctx.plan !== 'free') throw new HttpError(409, 'already_subscribed', 'Zaten ücretli bir paketin var.');
+    if (body.acceptTerms !== true) {
+      throw new HttpError(400, 'terms_required', 'Devam etmek için Mesafeli Satış Sözleşmesi ve Ön Bilgilendirme Formu\'nu onaylamalısın.');
+    }
     let checkout;
     try {
       checkout = await payments.startCheckout({
@@ -173,8 +225,8 @@ export function createApp({ db, config, payments, now = () => Date.now() }) {
       if (status) throw new HttpError(status, err.code, err.message);
       throw err;
     }
-    db.prepare('INSERT INTO checkouts (token, user_id, plan, period, form_html, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(checkout.token, user.id, body.plan, body.period, checkout.formHtml ?? null, now());
+    db.prepare('INSERT INTO checkouts (token, user_id, plan, period, form_html, terms_accepted_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(checkout.token, user.id, body.plan, body.period, checkout.formHtml ?? null, now(), now());
     sendJson(res, 200, { url: checkout.url });
   });
 

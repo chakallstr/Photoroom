@@ -20,7 +20,7 @@ async function relogin(client, email = 'satici@ornek.com', password = 'gizli-sif
 }
 
 async function subscribe(client, plan = 'pro', period = 'monthly') {
-  const start = await client.post('/api/billing/checkout', { plan, period });
+  const start = await client.post('/api/billing/checkout', { acceptTerms: true, plan, period });
   assert.equal(start.status, 200, JSON.stringify(start.data));
   const token = new URL(start.data.url).searchParams.get('token');
   const pay = await client.request('POST', '/api/billing/mock/pay', { form: { token, result: 'success' } });
@@ -38,7 +38,7 @@ test('anonim kullanıcı ücretsiz paketle başlar ve anonim çerez alır', asyn
   assert.equal(me.status, 200);
   assert.equal(me.data.user, null);
   assert.equal(me.data.plan, 'free');
-  assert.deepEqual(me.data.limits, { plan: 'free', dailyLimit: 3, maxSide: 1080, batch: false });
+  assert.deepEqual(me.data.limits, { plan: 'free', dailyLimit: 3, maxSide: 1080, batch: false, brand: false });
   assert.ok(c.jar.has('pr_anon'));
 });
 
@@ -150,10 +150,10 @@ test('çerezi silmek limiti sıfırlamaz (IP sınırı)', async () => {
 
 test('giriş yapmadan ödeme başlatılamaz, geçersiz paket reddedilir', async () => {
   const c = t.client();
-  assert.equal((await c.post('/api/billing/checkout', { plan: 'pro', period: 'monthly' })).status, 401);
+  assert.equal((await c.post('/api/billing/checkout', { acceptTerms: true, plan: 'pro', period: 'monthly' })).status, 401);
   await register(c);
-  assert.equal((await c.post('/api/billing/checkout', { plan: 'free', period: 'monthly' })).status, 400);
-  assert.equal((await c.post('/api/billing/checkout', { plan: 'pro', period: 'haftalik' })).status, 400);
+  assert.equal((await c.post('/api/billing/checkout', { acceptTerms: true, plan: 'free', period: 'monthly' })).status, 400);
+  assert.equal((await c.post('/api/billing/checkout', { acceptTerms: true, plan: 'pro', period: 'haftalik' })).status, 400);
 });
 
 test('Pro aboneliği sınırsız kullanım ve tam çözünürlük açar', async () => {
@@ -164,7 +164,7 @@ test('Pro aboneliği sınırsız kullanım ve tam çözünürlük açar', async 
 
   const me = (await c.get('/api/me')).data;
   assert.equal(me.plan, 'pro');
-  assert.deepEqual(me.limits, { plan: 'pro', dailyLimit: null, maxSide: null, batch: true });
+  assert.deepEqual(me.limits, { plan: 'pro', dailyLimit: null, maxSide: null, batch: true, brand: false });
   assert.equal(me.subscription.status, 'active');
 
   for (let i = 0; i < 20; i++) assert.equal((await c.post('/api/usage', { count: 1 })).status, 200);
@@ -173,7 +173,7 @@ test('Pro aboneliği sınırsız kullanım ve tam çözünürlük açar', async 
 test('reddedilen kartta abonelik açılmaz', async () => {
   const c = t.client();
   await register(c);
-  const start = await c.post('/api/billing/checkout', { plan: 'pro', period: 'monthly' });
+  const start = await c.post('/api/billing/checkout', { acceptTerms: true, plan: 'pro', period: 'monthly' });
   const token = new URL(start.data.url).searchParams.get('token');
   const pay = await c.request('POST', '/api/billing/mock/pay', { form: { token, result: 'failure' } });
   const cb = await c.get(pay.headers.get('location'));
@@ -194,7 +194,7 @@ test('aynı ödeme dönüşü iki kez kullanılamaz, bilinmeyen token reddedilir
 test('ödeme dönüşü oturum çerezi olmadan da doğru kullanıcıya işlenir', async () => {
   const c = t.client();
   await register(c);
-  const start = await c.post('/api/billing/checkout', { plan: 'business', period: 'yearly' });
+  const start = await c.post('/api/billing/checkout', { acceptTerms: true, plan: 'business', period: 'yearly' });
   const token = new URL(start.data.url).searchParams.get('token');
   t.payments.setResult(token, 'success');
   // iyzico dönüşü başka siteden gelen bir form POST'udur; SameSite=Lax çerez gönderilmez.
@@ -209,7 +209,7 @@ test('zaten abone olan kullanıcı ikinci kez ödeme başlatamaz', async () => {
   const c = t.client();
   await register(c);
   await subscribe(c);
-  assert.equal((await c.post('/api/billing/checkout', { plan: 'pro', period: 'yearly' })).status, 409);
+  assert.equal((await c.post('/api/billing/checkout', { acceptTerms: true, plan: 'pro', period: 'yearly' })).status, 409);
 });
 
 function webhook(c, body, signature) {
@@ -263,8 +263,8 @@ test('ödemesi alınamayan abonelik iptal edilebilir', async () => {
 test('iki sekmeden iki ödeme: yeni abonelik açılır, eskisi sağlayıcıda iptal edilir', async () => {
   const c = t.client();
   await register(c);
-  const a = await c.post('/api/billing/checkout', { plan: 'pro', period: 'monthly' });
-  const b = await c.post('/api/billing/checkout', { plan: 'business', period: 'monthly' });
+  const a = await c.post('/api/billing/checkout', { acceptTerms: true, plan: 'pro', period: 'monthly' });
+  const b = await c.post('/api/billing/checkout', { acceptTerms: true, plan: 'business', period: 'monthly' });
   assert.equal(a.status, 200);
   assert.equal(b.status, 200);
   for (const start of [a, b]) {
@@ -281,7 +281,7 @@ test('iki sekmeden iki ödeme: yeni abonelik açılır, eskisi sağlayıcıda ip
 test('ödeme yapıp dönüş sayfasına gelmeyen kullanıcının aboneliği sonradan açılır', async () => {
   const c = t.client();
   await register(c);
-  const start = await c.post('/api/billing/checkout', { plan: 'pro', period: 'monthly' });
+  const start = await c.post('/api/billing/checkout', { acceptTerms: true, plan: 'pro', period: 'monthly' });
   const token = new URL(start.data.url).searchParams.get('token');
   t.payments.setResult(token, 'success'); // ödendi ama sekme kapandı, dönüş hiç gelmedi
   assert.equal((await c.get('/api/me')).data.plan, 'free', 'hemen kontrol edilmez');
@@ -292,7 +292,7 @@ test('ödeme yapıp dönüş sayfasına gelmeyen kullanıcının aboneliği sonr
 test('aynı ödeme dönüşü eşzamanlı iki istekle iki kez işlenmez', async () => {
   const c = t.client();
   await register(c);
-  const start = await c.post('/api/billing/checkout', { plan: 'pro', period: 'monthly' });
+  const start = await c.post('/api/billing/checkout', { acceptTerms: true, plan: 'pro', period: 'monthly' });
   const token = new URL(start.data.url).searchParams.get('token');
   t.payments.setResult(token, 'success');
   const results = await Promise.all([1, 2].map(() => t.client().get(`/api/billing/callback?token=${token}`)));
@@ -323,6 +323,61 @@ test('iptal edilen abonelik dönem sonuna kadar geçerli kalır', async () => {
   await relogin(c);
   assert.equal((await c.get('/api/me')).data.plan, 'free');
   assert.equal((await c.post('/api/billing/cancel', {})).status, 404);
+});
+
+test('sözleşme onaylanmadan ödeme başlatılamaz; onay zamanı kaydedilir', async () => {
+  const c = t.client();
+  await register(c);
+  const r = await c.post('/api/billing/checkout', { plan: 'pro', period: 'monthly' });
+  assert.equal(r.status, 400);
+  assert.equal(r.data.error, 'terms_required');
+  await c.post('/api/billing/checkout', { acceptTerms: true, plan: 'pro', period: 'monthly' });
+  assert.equal(t.db.prepare('SELECT terms_accepted_at FROM checkouts').get().terms_accepted_at, t.clock.now);
+});
+
+test('İşletme paketi logo özelliğini açar', async () => {
+  const c = t.client();
+  await register(c);
+  await subscribe(c, 'business', 'monthly');
+  assert.equal((await c.get('/api/me')).data.limits.brand, true);
+});
+
+// ---------- Hesap ayarları ----------
+
+test('şifre değiştirme: eski şifre gerekir, diğer oturumlar kapanır', async () => {
+  const c = t.client();
+  await register(c);
+  const other = t.client();
+  await relogin(other);
+  assert.equal((await c.post('/api/account/password', { currentPassword: 'yanlis-sifre', newPassword: 'yeni-sifre-123' })).status, 401);
+  assert.equal((await c.post('/api/account/password', { currentPassword: 'gizli-sifre-1', newPassword: 'kisa' })).status, 400);
+  assert.equal((await c.post('/api/account/password', { currentPassword: 'gizli-sifre-1', newPassword: 'yeni-sifre-123' })).status, 200);
+  assert.equal((await c.get('/api/me')).data.user.email, 'satici@ornek.com', 'bu cihaz açık kalmalı');
+  assert.equal((await other.get('/api/me')).data.user, null, 'diğer cihaz kapanmalı');
+  assert.equal((await t.client().post('/api/auth/login', { email: 'satici@ornek.com', password: 'gizli-sifre-1' })).status, 401);
+  assert.equal((await t.client().post('/api/auth/login', { email: 'satici@ornek.com', password: 'yeni-sifre-123' })).status, 200);
+});
+
+test('hesap silme: şifre gerekir, abonelik iptal edilir, tüm veriler silinir', async () => {
+  const c = t.client();
+  await register(c);
+  await subscribe(c);
+  await c.post('/api/usage', { count: 1 });
+  assert.equal((await c.post('/api/account/delete', { password: 'yanlis-sifre' })).status, 401);
+  const r = await c.post('/api/account/delete', { password: 'gizli-sifre-1' });
+  assert.equal(r.status, 200);
+  assert.equal(c.jar.has('pr_session'), false);
+  for (const table of ['users', 'sessions', 'subscriptions', 'checkouts']) {
+    assert.equal(t.db.prepare(`SELECT COUNT(*) n FROM ${table}`).get().n, 0, table);
+  }
+  assert.equal(t.db.prepare("SELECT COUNT(*) n FROM usage WHERE subject LIKE 'u:%'").get().n, 0);
+  assert.equal((await t.client().post('/api/auth/login', { email: 'satici@ornek.com', password: 'gizli-sifre-1' })).status, 401);
+  // Aynı e-postayla yeniden kayıt olunabilir.
+  assert.equal((await register(t.client())).status, 201);
+});
+
+test('sağlık kontrolü', async () => {
+  assert.deepEqual((await t.client().get('/api/health')).data, { ok: true });
 });
 
 // ---------- Bozuk istekler ----------

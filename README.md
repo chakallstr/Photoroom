@@ -15,6 +15,7 @@ server/            API (ek paket yok: node:http + node:sqlite)
   usage.js           Günlük hak (İstanbul saatine göre)
   billing.js         Abonelik durumu
   payments/          iyzico ve geliştirme için sahte (mock) ödeme
+public/yasal/      Mesafeli satış, ön bilgilendirme, iptal/iade, gizlilik/KVKK, iletişim (taslak)
 scripts/iyzico-setup.js  iyzico'da ürün ve planları oluşturur
 test/              Otomatik testler (sahte iyzico sunucusu dahil)
 ```
@@ -54,6 +55,9 @@ Paket tanımlarının tek kaynağı `server/plans.js`.
 | `GET/POST /api/billing/callback` | iyzico dönüşü; ödeme iyzico'dan doğrulanır |
 | `POST /api/billing/webhook` | iyzico abonelik bildirimleri (imza doğrulamalı) |
 | `POST /api/billing/cancel` | Aboneliği iptal eder (dönem sonuna kadar geçerli) |
+| `POST /api/account/password` | Şifre değiştirir (diğer oturumlar kapanır) |
+| `POST /api/account/delete` | Hesabı ve verileri siler, aboneliği iptal eder (KVKK) |
+| `GET /api/health` | Sağlık kontrolü |
 
 Güvenlik: `HttpOnly` + `SameSite=Lax` çerezler; POST istekleri yalnızca JSON kabul eder ve `Origin` kontrol edilir (CSRF);
 giriş denemeleri sınırlıdır; çerez silerek ek hak alınmasın diye IP başına da (gizli tuzla özetlenmiş, IPv6'da /64) sınır vardır.
@@ -82,6 +86,21 @@ Abonelik kuralları:
 Sandbox'ta mutlaka doğrulanması gerekenler (dokümanda belirsiz ya da çelişkili):
 - Webhook imzasındaki alan sırası (dokümandaki kod örnekleri `merchantId + secretKey + ...` diyor, metin `secretKey` ile başlıyor).
 - GET isteklerinde imzaya gövde eklenmemesi (doküman böyle diyor, resmi SDK `{}` ekliyor).
+
+## Yayına alma (Render)
+
+1. Render'da **New → Blueprint** ile bu repoyu seç; `render.yaml` servisi ve 1 GB kalıcı diski oluşturur.
+2. Panelde gizli değerleri gir (`PUBLIC_URL`, iyzico anahtarları ve plan kodları).
+3. Alan adını bağla ve iyzico panelinde webhook adresini güncelle.
+
+Başka bir platformda `Dockerfile` kullanılabilir; `/data` klasörü kalıcı bir diske bağlanmalı.
+
+## Yayından önce yapılacaklar
+
+- `public/yasal/` altındaki köşeli parantezli alanları doldur, metinleri hukukçuya kontrol ettir ve sayfalardaki taslak uyarısını kaldır.
+- E-posta gönderimi yok: mesafeli satış sözleşmesinin alıcıya kalıcı veri saklayıcısıyla (e-posta) iletilmesi,
+  fiyat değişikliği bildirimi ve "şifremi unuttum" için bir e-posta servisi (ör. Resend, Postmark, SMTP) bağlanmalı.
+- İşletme paketindeki ekip hesabı (5 kullanıcı) henüz yok; fiyat sayfasında "yakında" olarak gösteriliyor.
 
 ## Arka plan silme
 
