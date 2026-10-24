@@ -237,7 +237,10 @@ function run() {
       const sharp = state.sharpen && state.sharp ? state.sharp : null;
       // Netleştirilmiş (4×) görselde renk sayısı çok yüksek; 5 bit/kanal yuvarlamayla kayıpsız izleme sığar
       // (orijinale göre belirgin fark %1,8; docs/vektor-kanit.md)
-      if (mode === 'exact') out = sharp ? V.vectorizeExact(sharp.rgba, sharp.w, sharp.h, { colorBits: 5 }) : V.vectorizeExact(src, W, H);
+      if (mode === 'exact') {
+        if (sharp) { const fit = V.shrinkForExact(sharp.rgba, sharp.w, sharp.h); out = V.vectorizeExact(fit.rgba, fit.width, fit.height, { colorBits: 5 }); }
+        else out = V.vectorizeExact(src, W, H);
+      }
       else {
         const extra = state.band && mode === 'cizim' ? V.BAND_GRADIENT_OVERRIDES : {};
         if (sharp) {

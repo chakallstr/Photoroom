@@ -230,3 +230,15 @@ test('renk seviyesi azaltma ve azaltılmış kayıpsız izleme', async () => {
   assert.match(r.warnings[0], /32 seviye/);
   assert.equal(verifyExact(r.svg, posterize(img, 5), w, h), null);
 });
+
+test('yüksek sadakat çalışma boyutu: küçük görsel aynen, büyük görsel 2× küçültülür', async () => {
+  const { shrinkForExact } = await import('../public/assets/vector.js');
+  const small = shrinkForExact(new Uint8Array(100 * 100 * 4), 100, 100);
+  assert.equal(small.scale, 1); assert.equal(small.width, 100);
+  const w = 2000, h = 1000, rgba = new Uint8Array(w * h * 4);
+  for (let p = 0; p < w * h; p++) { rgba[p * 4] = (p % w) % 2 ? 100 : 200; rgba[p * 4 + 1] = 50; rgba[p * 4 + 2] = 10; rgba[p * 4 + 3] = p < w * h / 2 ? 255 : 0; }
+  const big = shrinkForExact(rgba, w, h);
+  assert.equal(big.scale, 2); assert.equal(big.width, 1000); assert.equal(big.height, 500);
+  assert.equal(big.rgba[0], 150, 'kutu ortalaması'); assert.equal(big.rgba[3], 255);
+  assert.equal(big.rgba[(499 * 1000) * 4 + 3], 0, 'saydam alan saydam kalır');
+});

@@ -823,6 +823,29 @@ export function vectorizePixels(rgba, width, height, { preset = 'logo', cutout =
   return { svg, stats: check.stats, warnings };
 }
 
+// Yüksek sadakat için çalışma boyutu: netleştirilmiş 4× görsel maxPixels'i aşıyorsa 2× boyuta indirilir (kutu
+// ortalaması). Ölçüm: 640×480 anime karesi 4×'te 5 bit sınırı aşıyor (4 bit %14,5), 2×'te 5 bit %0,1
+// (docs/vektor-kanit.md). Dönüş: { rgba, width, height, scale } (scale: uygulanan küçültme, 1 ya da 2).
+export const EXACT_MAX_PIXELS = 1_400_000;
+export function shrinkForExact(rgba, width, height, maxPixels = EXACT_MAX_PIXELS) {
+  if (width * height <= maxPixels) return { rgba, width, height, scale: 1 };
+  const w = Math.floor(width / 2), h = Math.floor(height / 2), out = new Uint8Array(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const o = (y * w + x) * 4;
+      let r = 0, g = 0, b = 0, a = 0, c = 0;
+      for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+        const i = ((2 * y + dy) * width + 2 * x + dx) * 4;
+        a += rgba[i + 3];
+        if (rgba[i + 3] >= 128) { r += rgba[i]; g += rgba[i + 1]; b += rgba[i + 2]; c++; }
+      }
+      if (c) { out[o] = Math.round(r / c); out[o + 1] = Math.round(g / c); out[o + 2] = Math.round(b / c); }
+      out[o + 3] = Math.round(a / 4);
+    }
+  }
+  return { rgba: out, width: w, height: h, scale: 2 };
+}
+
 // Renk seviyesi azaltma (posterize): her kanal 2^bits seviyeye yuvarlanır (seviye ortası). Kayıpsız izlemede yol
 // sayısını sınırlar: AI ile netleştirilmiş 4× görselde 5 bit (32 seviye/kanal) → ~2.500 renk, orijinale göre
 // belirgin fark %1,8 (ölçüm: docs/vektor-kanit.md). Saydam pikseller değişmez.

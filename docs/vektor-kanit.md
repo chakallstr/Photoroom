@@ -204,8 +204,10 @@ kenarlarından kayıpsız izlenir (`vectorizeExact(..., { colorBits: b })`; `ver
 
 Diğer örneklerde aynı yöntem (orijinale göre, kendi boyutunda): panda %1,3 (3.865 yol), Pikachu %0,9 (4.656),
 bulanık logo %0,0 (1.515), temiz logo %0,8 (512). Editörden indirilen çıktı (arka plan silme atlanarak, kendi
-saydamlığıyla): ejderha %1,4, 2.283 yol, doğrulayıcı geçerli. 640×480 anime karesi 4× netleştirmede Python
-denemesinde bellek yüzünden tamamlanamadı (tarayıcı işçisi döşemeli çalıştığı için etkilenmez).
+saydamlığıyla), iki ayrı koşuda: ejderha %1,4, 2.283 yol, doğrulayıcı geçerli. Büyük görsel: 640×480 anime karesi
+4× netleştirmede (2560×1920) 5 bit sınırı aşıyor, 4 bit %14,5 (8,5 MB); çalışma boyutu 2×'e indirilince
+(`shrinkForExact`, 1,4 MP üstünde) 5 bit **%0,1** (2.606 yol, 5,1 MB), 6 bit %0,0 (7,5 MB). Editör ve laboratuvar
+bu kuralı uygular.
 
 5 bit seçildi: netleştirilmiş görselin tabanına (%1,6) ulaşıyor, dosya 3,3 MB. Laboratuvarda "AI netleştir" açıkken
 Kayıpsız mod bunu üretir. Büyütmede kenarlar 1068 piksel çözünürlüğünde basamaklıdır (orijinalin 4 katı); "temiz
