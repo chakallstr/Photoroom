@@ -4,11 +4,12 @@ import { refineMask } from './mask.js';
 
 env.allowLocalModels = false;
 
-// İki model de ticari kullanıma uygun lisanslı:
-// - BiRefNet lite (MIT): yüksek kalite, WebGPU ister (WASM'de bellek yetmiyor).
-// - ormbg (Apache 2.0): hafif yedek, WebGPU olmayan tarayıcılar için.
+// İki model de ticari kullanıma uygun lisanslı (MIT):
+// - BiRefNet lite 1024: en ayrıntılı sonuç, WebGPU ister (WASM'de bellek yetmiyor).
+// - BiRefNet lite 512: WebGPU olmayan tarayıcılar için. Ürün fotoğraflarıyla yapılan
+//   karşılaştırmada ormbg ve MVANet'ten iyi/eşit sonuç verdi, görsel başına ~9 sn (MVANet ~46 sn).
 const HQ_MODEL = 'onnx-community/BiRefNet_lite-ONNX';
-const LITE_MODEL = 'onnx-community/ormbg-ONNX';
+const LITE_MODEL = 'studioludens/birefnet-lite-512';
 
 let segmenterPromise = null;
 
@@ -30,7 +31,8 @@ function load(forceWasm) {
     if (adapter) {
       attempts.push({ model: HQ_MODEL, device: 'webgpu', dtype: adapter.features.has('shader-f16') ? 'fp16' : 'fp32', quality: 'high' });
     }
-    attempts.push({ model: LITE_MODEL, device: 'wasm', dtype: 'uint8', quality: 'standard' });
+    // fp16, fp32 ile aynı sonucu verir ve indirmesi yarı boyuttadır (98 MB).
+    attempts.push({ model: LITE_MODEL, device: 'wasm', dtype: 'fp16', quality: 'standard' });
     let lastError;
     for (const { model, quality, ...opts } of attempts) {
       try {
