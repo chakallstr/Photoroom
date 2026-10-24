@@ -120,7 +120,7 @@ textarea { width: 100%; height: 110px; font: 12px/1.4 var(--mono); background: v
       </div>
       <div class="card">
         <h3>Fark haritası</h3>
-        <p class="note">Kırmızı: orijinalden farklı çizilen piksel. Soluk gri: aynı.</p>
+        <p class="note">Koyu kırmızı: belirgin fark. Soluk pembe: hafif fark (ΔE 2–6). Gri: aynı.</p>
         <div class="diffwrap"><canvas id="diff"></canvas></div>
       </div>
       <div class="card">
@@ -210,7 +210,7 @@ async function showSvg(out, ms) {
   const got = pixelsOf(img, W, H, false);
   const diff = document.createElement('canvas'); const dc = $('#diff'); dc.width = W; dc.height = H;
   const dctx = dc.getContext('2d'); const dimg = dctx.createImageData(W, H);
-  let differ = 0, union = 0, inter = 0, dE = 0, nC = 0, total = 0;
+  let differ = 0, strong = 0, union = 0, inter = 0, dE = 0, nC = 0, total = 0;
   const lum = (d, i) => { const a = d[i + 3] / 255; return (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) * a + 255 * (1 - a); };
   for (let i = 0; i < src.length; i += 4) {
     let bad;
@@ -230,6 +230,14 @@ async function showSvg(out, ms) {
         bad = mode === 'exact'
           ? (sa !== ga || src[i] !== got[i] || src[i + 1] !== got[i + 1] || src[i + 2] !== got[i + 2])
           : (ia !== ib || d > 2.3);
+        if (bad && mode !== 'exact') {
+          if (ia !== ib || d > 6) strong++;
+          // Isi haritasi: hafif fark (JPEG gurultusu, dE 2-4) soluk pembe; belirgin fark koyu kirmizi.
+          const t = ia !== ib ? 1 : Math.min(1, (d - 2.3) / 8);
+          dimg.data.set([Math.round(235 - 15 * t), Math.round(190 - 150 * t), Math.round(190 - 150 * t), 255], i);
+          differ++;
+          continue;
+        }
       }
     }
     if (bad) { differ++; dimg.data.set([220, 40, 40, 255], i); }
@@ -241,8 +249,9 @@ async function showSvg(out, ms) {
   const pct = total ? (100 * differ / total) : 0;
   const v = $('#verdict');
   v.className = 'verdict ' + (differ === 0 ? 'ok' : 'bad');
-  const what = mode === 'exact' ? 'farklı piksel (tek birim bile)' : mode === 'siyahBeyaz' ? 'farklı piksel (koyu/açık alanlara göre)' : 'gözle görülür farklı piksel (ΔE > 2,3)';
-  v.innerHTML = `<span class="big">${differ.toLocaleString('tr-TR')}</span><small>${what}${total ? ` · %${pct.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}` : ''}</small>`;
+  const what = mode === 'exact' ? 'farklı piksel (tek birim bile)' : mode === 'siyahBeyaz' ? 'farklı piksel (koyu/açık alanlara göre)' : 'farklı piksel (ΔE > 2,3)';
+  v.innerHTML = `<span class="big">${differ.toLocaleString('tr-TR')}</span><small>${what}${total ? ` · %${pct.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}` : ''}</small>`
+    + (mode !== 'exact' && mode !== 'siyahBeyaz' ? `<small>belirgin fark (ΔE > 6 ya da şekil): <b>${strong.toLocaleString('tr-TR')}</b> · %${(total ? 100 * strong / total : 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}</small>` : '');
   const items = [
     ['Saf vektör: yalnızca &lt;svg&gt; ve &lt;path&gt;, gömülü resim yok', !check.errors.some((e) => /saf vektör|öğe/.test(e))],
     ['viewBox var, ölçeklenir; transform yok', !check.errors.some((e) => /viewBox|transform|width/.test(e))],
@@ -255,7 +264,7 @@ async function showSvg(out, ms) {
     + (check.ok ? '' : `<li><span class="n">!</span><span>${check.errors.slice(0, 3).join('; ')}</span></li>`);
   $('#explain').textContent = mode === 'exact'
     ? 'Kayıpsız mod: her renk bölgesi piksel kenarlarından çizilir. Orijinal boyutta her piksel aynıdır; büyütünce kenarlar orijinal gibi basamaklı görünür.'
-    : `Pürüzsüz mod: şekiller eğriyle sadeleştirilir; farklı pikseller çoğunlukla kenarlardaki bulanık geçiş pikselleridir. Şekil örtüşmesi %${(100 * (union ? inter / union : 1)).toFixed(1)}${nC ? `, ortalama renk farkı ΔE ${(dE / nC).toFixed(1)}` : ''}.`;
+    : `Pürüzsüz mod: şekiller eğriyle sadeleştirilir ve düz alanlar tek renge indirilir. Soluk pembe pikseller çoğunlukla orijinaldeki JPEG gürültüsü ve bulanık kenar geçişleridir (vektör bunları temizler); koyu kırmızı belirgin farktır. Şekil örtüşmesi %${(100 * (union ? inter / union : 1)).toFixed(1)}${nC ? `, ortalama renk farkı ΔE ${(dE / nC).toFixed(1)}` : ''}. Orijinalle piksel piksel aynı çıktı için Kayıpsız modu seç.`;
   $('#stats').innerHTML = [
     ['Yol (şekil)', check.stats.paths.toLocaleString('tr-TR')], ['Renk', check.stats.colors], ['Dosya boyutu', kb(out.svg.length)], ['Süre', `${ms} ms`],
   ].map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('');
