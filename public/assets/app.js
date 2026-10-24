@@ -10,7 +10,8 @@ const settings = {
   padding: 8,
   shadow: false,
   sharpen: false, // AI netleştirme (upscale-worker.js)
-  format: 'png',
+  format: 'png', // png | jpg | svg
+  svgMode: 'temiz', // temiz | sadakat | birebir
   logo: null, // HTMLImageElement
   logoPos: 'br',
   logoSize: 18, // görselin kısa kenarına göre yüzde
@@ -94,6 +95,15 @@ async function pump() {
   if (!item) return pump();
   busy = true;
 
+  // Zaten şeffaf zeminli görsel (PNG/WebP, piksellerin ≥ %2'si saydam): arka plan silme atlanır ve hak
+  // düşülmez; kendi saydamlığı korunur (model kenarları değiştirmesin; vektör/netleştirme için orijinal kalsın).
+  const own = await transparentPixels(item.file);
+  if (own) {
+    if (!items.has(id)) { busy = false; return pump(); }
+    item.status = 'working';
+    onResult({ id, width: own.width, height: own.height, buffer: own.buffer });
+    return;
+  }
   // Günlük haktan düş; limit dolduysa sıradaki görselleri de beklet.
   const quota = await account.consume(1);
   if (!items.has(id)) { busy = false; return pump(); }
@@ -121,6 +131,21 @@ async function pump() {
   const left = queue.length;
   setStatus(left ? `İşleniyor · sırada ${left} görsel` : 'İşleniyor…', 1);
   worker.postMessage({ type: 'run', id, blob: item.file });
+}
+
+// Dosya şeffaflık taşıyorsa RGBA tamponunu döndürür; yoksa null. (JPG her zaman null.)
+async function transparentPixels(file) {
+  if (!/png|webp|gif/i.test(file.type)) return null;
+  try {
+    const bmp = await createImageBitmap(file);
+    const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+    const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(bmp, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height).data;
+    let clear = 0;
+    for (let i = 3; i < d.length; i += 4) if (d[i] < 128) clear++;
+    if (clear < d.length / 4 * 0.02) return null;
+    return { width: c.width, height: c.height, buffer: d.buffer };
+  } catch { return null; }
 }
 
 // ---------- AI netleştirme ----------
@@ -365,6 +390,49 @@ function outputName(item) {
   return `${base}-photoroot.${settings.format}`;
 }
 
+// ---------- Vektör (SVG) ----------
+// Motor ilk kullanımda yüklenir (vector.js + WASM). Kaynak: kesilmiş ürün (şeffaf zemin); AI netleştirme açıksa
+// netleştirilmiş 4× hali. Türler: temiz (eğri, az parça), sadakat (netleştirilmiş + 32 seviye + kayıpsız),
+// birebir (kesilmiş görselle piksel piksel aynı). Çıktı her durumda validateSvg'den geçer (vector.js içinde).
+let vectorMod = null;
+async function vectorEngine() {
+  if (!vectorMod) {
+    const mod = await import('./vector.js');
+    await mod.initVectorizer();
+    vectorMod = mod;
+  }
+  return vectorMod;
+}
+const rgbaOf = (canvas) => canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, canvas.width, canvas.height).data;
+async function vectorOf(item) {
+  const V = await vectorEngine();
+  const base = item.cutout, W = base.width, H = base.height;
+  const sharp = settings.sharpen && item.sharp ? item.sharp : null;
+  if (settings.svgMode === 'birebir') return V.vectorizeExact(rgbaOf(base), W, H);
+  if (settings.svgMode === 'sadakat') {
+    if (!sharp) throw new Error('"Yüksek sadakat" için önce "AI netleştir" seçeneğini aç (küçük ve orta boy görsellerde çalışır).');
+    const r = V.vectorizeExact(rgbaOf(sharp), sharp.width, sharp.height, { colorBits: 5 });
+    r.svg = r.svg.replace(/ width="\d+" height="\d+"/, ` width="${W}" height="${H}"`);
+    return r;
+  }
+  if (sharp) {
+    return V.vectorizePixels(rgbaOf(sharp), sharp.width, sharp.height, { preset: 'cizim', outWidth: W, outHeight: H, scale: sharp.width / W, ...V.BAND_GRADIENT_OVERRIDES });
+  }
+  const plan = V.planScale(W, H);
+  let src = base;
+  if (plan.scale !== 1) {
+    src = document.createElement('canvas'); src.width = plan.width; src.height = plan.height;
+    const x = src.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(base, 0, 0, plan.width, plan.height);
+  }
+  return V.vectorizePixels(rgbaOf(src), src.width, src.height, { preset: 'cizim', outWidth: W, outHeight: H, scale: plan.scale });
+}
+async function svgBlob(item) {
+  setStatus('Vektöre çevriliyor… (büyük görsellerde birkaç saniye)', 1);
+  const r = await vectorOf(item);
+  setStatus(r.warnings.length ? r.warnings[0] : 'Hazır', 1);
+  return new Blob([r.svg], { type: 'image/svg+xml' });
+}
+
 function toBlob(canvas) {
   const type = settings.format === 'jpg' ? 'image/jpeg' : 'image/png';
   return new Promise((resolve) => canvas.toBlob(resolve, type, 0.92));
@@ -384,6 +452,10 @@ const exportMaxSide = () => account.limits()?.maxSide ?? Infinity;
 async function downloadOne(id) {
   const item = items.get(id);
   if (item?.status !== 'done') return;
+  if (settings.format === 'svg') {
+    try { saveBlob(await svgBlob(item), outputName(item)); } catch (e) { setStatus(e.message, 1, true); }
+    return;
+  }
   saveBlob(await toBlob(compose(item, exportMaxSide())), outputName(item));
 }
 
@@ -404,7 +476,7 @@ async function downloadAll() {
     let name = outputName(item);
     for (let n = 2; used.has(name); n++) name = outputName(item).replace(/(\.\w+)$/, `-${n}$1`);
     used.add(name);
-    zip.file(name, await toBlob(compose(item, exportMaxSide())));
+    zip.file(name, settings.format === 'svg' ? await svgBlob(item) : await toBlob(compose(item, exportMaxSide())));
   }
   saveBlob(await zip.generateAsync({ type: 'blob' }), 'photoroot.zip');
   updateToolbar();
@@ -425,7 +497,9 @@ function bindSeg(id, key, after) {
 }
 
 bindSeg('#bg-mode', 'bg', () => { $('#swatches').hidden = settings.bg !== 'color'; markSwatch(); });
+bindSeg('#svg-mode', 'svgMode', () => {});
 bindSeg('#format', 'format', () => {
+  $('#svg-mode-field').hidden = settings.format !== 'svg';
   // JPG'de şeffaflık olmaz; kullanıcıyı şaşırtmamak için beyaza geç.
   if (settings.format === 'jpg' && settings.bg === 'transparent') {
     $('#bg-mode [data-value="white"]').click();

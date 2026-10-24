@@ -202,6 +202,11 @@ kenarlarından kayıpsız izlenir (`vectorizeExact(..., { colorBits: b })`; `ver
 | (netleştirilmiş görselin kendisi) | – | – | – | 0,94 | %1,6 |
 | Temiz vektör, bant gradyanı | – | 686 | 0,3 MB | 4,44 | %23,1 |
 
+Diğer örneklerde aynı yöntem (orijinale göre, kendi boyutunda): panda %1,3 (3.865 yol), Pikachu %0,9 (4.656),
+bulanık logo %0,0 (1.515), temiz logo %0,8 (512). Editörden indirilen çıktı (arka plan silme atlanarak, kendi
+saydamlığıyla): ejderha %1,4, 2.283 yol, doğrulayıcı geçerli. 640×480 anime karesi 4× netleştirmede Python
+denemesinde bellek yüzünden tamamlanamadı (tarayıcı işçisi döşemeli çalıştığı için etkilenmez).
+
 5 bit seçildi: netleştirilmiş görselin tabanına (%1,6) ulaşıyor, dosya 3,3 MB. Laboratuvarda "AI netleştir" açıkken
 Kayıpsız mod bunu üretir. Büyütmede kenarlar 1068 piksel çözünürlüğünde basamaklıdır (orijinalin 4 katı); "temiz
 eğri" değildir, ama orijinale en yakın vektördür.

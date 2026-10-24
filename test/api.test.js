@@ -418,3 +418,13 @@ test('statik sayfalar sunulur, klasör dışına çıkılamaz', async () => {
   assert.equal((await c.get('/%2e%2e/package.json')).status, 404);
   assert.equal((await c.get('/api/yok')).status, 404);
 });
+
+test('editörde SVG dışa aktarma seçenekleri var ve vektör motoru tembel yüklenir', async () => {
+  const fs = await import('node:fs');
+  const html = fs.readFileSync(new URL('../public/app.html', import.meta.url), 'utf8');
+  assert.match(html, /data-value="svg"/);
+  for (const m of ["temiz", "sadakat", "birebir"]) assert.match(html, new RegExp(`id="svg-mode"[\\s\\S]*data-value="${m}"`));
+  const js = fs.readFileSync(new URL('../public/assets/app.js', import.meta.url), 'utf8');
+  assert.match(js, /import\('\.\/vector\.js'\)/);
+  assert.match(js, /colorBits: 5/);
+});

@@ -102,6 +102,14 @@ birkaç tonla boyanır (`public/assets/gradients.js`). Kayıpsız mod orijinalle
 her çıktı verilmeden önce doğrulanır.
 Kendin denemek için: `/vektor-lab.html`. Ölçümler ve kanıt: `docs/vektor-kanit.md`.
 
+### Editörde SVG indirme
+
+"Dosya türü → SVG" seçilince üç vektör türü var: **Temiz** (eğriler, az parça; logo/ikon/çizim), **Yüksek
+sadakat** (AI netleştirme + kanal başına 32 renk seviyesi + piksel kenarlı kayıpsız izleme; orijinale göre
+belirgin fark ≈ %1–2) ve **Birebir** (kesilmiş görselle piksel piksel aynı). SVG kesilmiş ürünü şeffaf zeminde
+verir; ölçü/kenar boşluğu/gölge uygulanmaz. Zaten şeffaf zeminli PNG/WebP yüklenirse arka plan silme atlanır ve
+hak düşülmez.
+
 ## AI netleştirme (4× büyütme)
 
 Küçük ya da bulanık görseller için isteğe bağlı adım: waifu2x `swin_unet` "art" 4× modeli (nunif, MIT;
