@@ -145,10 +145,11 @@
         <button type="button" data-auth-mode="register" aria-pressed="false">Hesap oluştur</button>
       </div>
       <p class="modal-lead" id="auth-lead">Hesabına giriş yap.</p>
-      <label class="input">E-posta<input type="email" name="email" autocomplete="email" required></label>
-      <label class="input">Şifre<input type="password" name="password" autocomplete="current-password" minlength="8" required></label>
+      <label class="input" id="auth-email">E-posta<input type="email" name="email" autocomplete="email" required></label>
+      <label class="input" id="auth-password"><span id="auth-password-label">Şifre</span><input type="password" name="password" autocomplete="current-password" minlength="8" required></label>
       <p class="form-error" id="auth-error" hidden></p>
       <button type="submit" class="btn btn-primary" value="submit" id="auth-submit">Giriş yap</button>
+      <button type="button" class="link-btn" id="forgot-link">Şifremi unuttum</button>
     </form>
   </dialog>
 

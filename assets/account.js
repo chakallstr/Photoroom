@@ -139,13 +139,33 @@ async function cancelSubscription() {
 
 let authMode = 'login';
 let authResolve = null;
+let resetToken = null;
+
+const AUTH_MODES = {
+  login: { submit: 'Giriş yap', lead: 'Hesabına giriş yap.', email: true, password: 'Şifre', autocomplete: 'current-password' },
+  register: { submit: 'Hesap oluştur', lead: 'Ücretsiz hesap oluştur.', email: true, password: 'Şifre', autocomplete: 'new-password' },
+  forgot: { submit: 'Sıfırlama bağlantısı gönder', lead: 'E-posta adresini yaz; şifreni sıfırlaman için bir bağlantı gönderelim.', email: true, password: null },
+  reset: { submit: 'Yeni şifreyi kaydet', lead: 'Hesabın için yeni bir şifre belirle.', email: false, password: 'Yeni şifre', autocomplete: 'new-password' },
+};
 
 function setAuthMode(mode) {
   authMode = mode;
+  const m = AUTH_MODES[mode];
+  const form = $('#auth-form');
   document.querySelectorAll('[data-auth-mode]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.authMode === mode)));
-  $('#auth-submit').textContent = mode === 'login' ? 'Giriş yap' : 'Hesap oluştur';
-  $('#auth-form').password.autocomplete = mode === 'login' ? 'current-password' : 'new-password';
-  if (!$('#auth-lead').dataset.reason) $('#auth-lead').textContent = mode === 'login' ? 'Hesabına giriş yap.' : 'Ücretsiz hesap oluştur.';
+  form.querySelector('.billing-toggle').hidden = mode === 'forgot' || mode === 'reset';
+  $('#auth-email').hidden = !m.email;
+  form.email.required = m.email;
+  $('#auth-password').hidden = !m.password;
+  form.password.required = Boolean(m.password);
+  if (m.password) {
+    $('#auth-password-label').textContent = m.password;
+    form.password.autocomplete = m.autocomplete;
+  }
+  $('#auth-submit').textContent = m.submit;
+  $('#forgot-link').hidden = mode !== 'login';
+  if (!$('#auth-lead').dataset.reason || mode === 'forgot' || mode === 'reset') $('#auth-lead').textContent = m.lead;
+  $('#auth-lead').className = 'modal-lead';
   $('#auth-error').hidden = true;
 }
 
@@ -164,20 +184,34 @@ export function openAuth(mode = 'login', reason = '') {
 
 function initAuth() {
   document.querySelectorAll('[data-auth-mode]').forEach((b) => { b.onclick = () => setAuthMode(b.dataset.authMode); });
+  $('#forgot-link').onclick = () => setAuthMode('forgot');
   const form = $('#auth-form');
   form.addEventListener('submit', async (e) => {
     if (e.submitter?.value === 'cancel') return;
     e.preventDefault();
     const btn = $('#auth-submit');
     btn.disabled = true;
-    const path = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
-    const r = await api('POST', path, { email: form.email.value, password: form.password.value }).catch(() => ({ status: 0, data: {} }));
+    const requests = {
+      login: ['/api/auth/login', { email: form.email.value, password: form.password.value }],
+      register: ['/api/auth/register', { email: form.email.value, password: form.password.value }],
+      forgot: ['/api/auth/forgot', { email: form.email.value }],
+      reset: ['/api/auth/reset', { token: resetToken, password: form.password.value }],
+    };
+    const r = await api('POST', ...requests[authMode]).catch(() => ({ status: 0, data: {} }));
     btn.disabled = false;
+    if (r.status === 200 && authMode === 'forgot') {
+      const lead = $('#auth-lead');
+      lead.textContent = r.data.message;
+      lead.className = 'form-ok';
+      return;
+    }
     if (r.status === 200 || r.status === 201) {
+      const messages = { login: 'Hoş geldin!', register: 'Hesabın oluşturuldu.', reset: 'Yeni şifren kaydedildi, giriş yaptın.' };
+      toast(messages[authMode]);
       form.reset();
+      resetToken = null;
       $('#auth-dialog').close('ok');
       update(r.data);
-      toast(authMode === 'login' ? 'Hoş geldin!' : 'Hesabın oluşturuldu.');
     } else {
       $('#auth-error').textContent = r.data.message || 'Bir hata oluştu.';
       $('#auth-error').hidden = false;
@@ -303,6 +337,15 @@ function initSettings() {
   }, 'Hesabın kalıcı olarak silinecek. Emin misin?');
 }
 
+// E-postadaki bağlantı: #sifre-sifirla=<token>. Token adres çubuğundan hemen silinir.
+function handleResetLink() {
+  const match = location.hash.match(/^#sifre-sifirla=([A-Za-z0-9_-]+)$/);
+  if (!match) return;
+  resetToken = match[1];
+  history.replaceState(null, '', location.pathname + location.search);
+  openAuth('reset');
+}
+
 // ---------- Başlangıç ----------
 
 export async function init() {
@@ -314,6 +357,10 @@ export async function init() {
     if (menu && !e.target.closest('.account-menu')) menu.hidden = true;
   });
   await refresh();
+
+  // E-postadaki şifre sıfırlama bağlantısı. Sayfa zaten açıkken tıklanırsa yalnızca # değişir.
+  handleResetLink();
+  window.addEventListener('hashchange', handleResetLink);
 
   // Ödeme dönüşü ve fiyat sayfasından gelen bağlantılar
   const params = new URLSearchParams(location.search);
