@@ -20,7 +20,10 @@ export const PRESETS = {
 // Çıktı sınırları: Cricut Design Space en fazla 5000 yol kabul eder; çok büyük dosyalar tarayıcıyı yorar.
 // Deneysel: bant başına gradyan (fills 'fit'). Netleştirilmiş gölgeli çizimde ΔE 6,5 → 5,3; düz çizim ve
 // logolarda yol sayısını artırıp hatayı yükseltiyor, o yüzden varsayılan değil. Laboratuvarda seçenek.
-export const BAND_GRADIENT_OVERRIDES = { fills: 'fit', localColors: 20, celStep: 3, filterSpeckle: 1 };
+export const BAND_GRADIENT_OVERRIDES = {
+  fills: 'fit', localColors: 60, celStep: 1, blurRadius: 0, filterSpeckle: 1, snapRadius: 6,
+  cornerThreshold: 30, lengthThreshold: 2, spliceThreshold: 30, // eğriler kaynağa sıkı sıkıya sadık
+};
 export const LIMITS = { cuttingPaths: 5000, maxPaths: 60000, maxBytes: 15_000_000, maxPixels: 4_000_000, maxGradients: 24 };
 
 // Çevirme ölçeği: kısa kenarı 600 px'ten küçük görseller (ince çizgiler korunsun diye) 4 kata kadar büyütülür,
@@ -615,10 +618,16 @@ function snapBlends(rgba, labels, owner, palette, labelColor, labelOwner, width,
         }
       }
       if (!near.length) continue;
-      // Uç adayları: komşu bölge tonları + pikselin kendi etiketi (kontur rengi olabilir)
+      // Uç adayları: komşu bölge tonları + pikselin kendi etiketi (kontur rengi olabilir). Penceredeki tüm
+      // etiketleri uç almak denendi: ΔE 4,44 → 4,58, vazgeçildi.
       const ends = near.slice();
       if (!ends.includes(labels[p])) ends.push(labels[p]);
       const C = labOf(p);
+      // Piksel komşu bir bölge tonuyla neredeyse aynı renkteyse doğrudan o tona katılır (kenar bölgesindeki saf
+      // dolgu pikseli ortak paletin yakın ama farklı rengine gitmesin; kontur gerçek genişliğinde kalsın)
+      let nearTone = -1, nearD = 5;
+      for (const l of near) { const d = Math.sqrt(dist2(C, palette[labelColor[l]])); if (d < nearD) { nearD = d; nearTone = l; } }
+      if (nearTone >= 0) { out[p] = nearTone; newOwner[p] = labelOwner[nearTone]; continue; }
       let best = -1, bestD = 12; // ΔE < 12: doğru parçasına yeterince yakın
       for (let a = 0; a < ends.length; a++) {
         for (let b = a + 1; b < ends.length; b++) {

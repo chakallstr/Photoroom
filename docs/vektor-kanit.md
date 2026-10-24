@@ -171,7 +171,16 @@ karşılaştırılır; "belirgin fark" ΔE > 6 olan piksel payı. Kaynak: AI ile
 | Çizim (varsayılan, cel 4 ton) | 6,57 | %37,2 | 132 |
 | Bant gradyanı, uçlar gerçek piksel ortalaması, adım 8 | 5,57 | %31,3 | 356 |
 | Bant gradyanı, adım 4 | 5,08 | %27,6 | 412 |
-| **Bant gradyanı, adım 3** (BAND_GRADIENT_OVERRIDES) | **5,05** | **%27,8** | 478 |
+| Bant gradyanı, adım 3 | 5,05 | %27,8 | 478 |
+| Bant gradyanı, adım 2 | 4,83 | %26,3 | 474 |
+| + sıkı eğri (köşe 30, uzunluk 2, ekleme 30) | 4,67 | %26,1 | 433 |
+| **+ adım 1, ön bulanıklık yok** (BAND_GRADIENT_OVERRIDES) | **4,44** | **%23,1** | 686 |
+
+Kalan hatanın dağılımı (adım 1): kenar pikselleri (orijinalde kontrastın yüksek olduğu yerler, piksellerin %46'sı)
+ort. ΔE 7,1 ve toplam hatanın %73'ü; düz alanlar ort. ΔE 2,2. Netleştirilmiş görselin kendisi orijinalden ΔE 0,94
+uzakta; yani kalan fark netleştirmeden değil, keskin vektör kenarının bulanık kenara oturmamasından. Denenip
+vazgeçilenler: renkleri orijinalden almak (4,8 → 5,8), kenar yarıçapı 1–3 (daha kötü), 64 renk palet (5,2),
+pencere içindeki tüm etiketleri karışım ucu saymak (4,58).
 
 Kalan farkın büyük kısmı kenarlarda: kaynak netleştirildiği için orijinalin bulanık kenarından ΔE olarak
 uzaklaşır (netleştirilmiş görsele göre ΔE 5,0). Diğer örneklerde bant gradyanı: bulanık logo 2,75 → 2,17 daha
