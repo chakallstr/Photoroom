@@ -216,3 +216,17 @@ test('Otsu eşiği iki tonlu görselde tonların arasına düşer', () => {
 test('hatalı girdi anlaşılır hata verir, çökmez', () => {
   assert.throws(() => vectorizePixels(new Uint8Array(10), 2, 2), /uyuşmuyor/);
 });
+
+test('renk seviyesi azaltma ve azaltılmış kayıpsız izleme', async () => {
+  const { posterize } = await import('../public/assets/vector.js');
+  const rgba = new Uint8Array([0, 7, 8, 255, 255, 128, 129, 255, 10, 20, 30, 0]);
+  const q = posterize(rgba, 5); // adım 8, seviye ortası +4
+  assert.deepEqual([...q], [4, 4, 12, 255, 252, 132, 132, 255, 0, 0, 0, 0]);
+  // Yumuşak geçişli görsel: 5 bit ile kayıpsız izleme doğrulanır, uyarı verir
+  const w = 24, h = 24, img = new Uint8Array(w * h * 4);
+  for (let p = 0; p < w * h; p++) { img[p * 4] = (p % w) * 10; img[p * 4 + 1] = 100; img[p * 4 + 2] = Math.floor(p / w) * 10; img[p * 4 + 3] = 255; }
+  const r = vectorizeExact(img, w, h, { colorBits: 5 });
+  assert.equal(validateSvg(r.svg).ok, true);
+  assert.match(r.warnings[0], /32 seviye/);
+  assert.equal(verifyExact(r.svg, posterize(img, 5), w, h), null);
+});

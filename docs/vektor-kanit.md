@@ -187,6 +187,25 @@ uzaklaşır (netleştirilmiş görsele göre ΔE 5,0). Diğer örneklerde bant g
 iyi; panda 3,16 → 3,79, anime 3,95 → 4,26 (yol 278 → 1433), temiz logo 0,39 → 1,25 daha kötü. Bu yüzden varsayılan
 değil; laboratuvarda "AI netleştir" açılınca otomatik açılır, istenirse kapatılır.
 
+### Yüksek sadakat: netleştirilmiş görselin renk seviyesi azaltılıp kayıpsız izlenmesi
+
+Hedef "orijinale göre belirgin fark ≤ %5" temiz şekillerle ulaşılamadı (en iyi %23). Ölçümle bulunan yol:
+AI ile netleştirilmiş 4× görselin renkleri kanal başına 2^b seviyeye yuvarlanır (`posterize`), sonra piksel
+kenarlarından kayıpsız izlenir (`vectorizeExact(..., { colorBits: b })`; `verifyExact` yuvarlanmış görsele göre
+0 fark). Orijinal boyutta ölçüm (267 px, kenar yumuşatmalı geri çizim):
+
+| Kaynak | Renk | Yol | Boyut | Ort. ΔE | Belirgin fark |
+|---|---|---|---|---|---|
+| 4 bit (16 seviye) | 632 | 7.645 | 2,3 MB | 3,06 | %7,9 |
+| **5 bit (32 seviye)** | 2.519 | 15.274 | 3,3 MB | **1,89** | **%1,8** |
+| 6 bit (64 seviye) | 9.359 | 28.178 | 4,6 MB | 1,29 | %1,5 |
+| (netleştirilmiş görselin kendisi) | – | – | – | 0,94 | %1,6 |
+| Temiz vektör, bant gradyanı | – | 686 | 0,3 MB | 4,44 | %23,1 |
+
+5 bit seçildi: netleştirilmiş görselin tabanına (%1,6) ulaşıyor, dosya 3,3 MB. Laboratuvarda "AI netleştir" açıkken
+Kayıpsız mod bunu üretir. Büyütmede kenarlar 1068 piksel çözünürlüğünde basamaklıdır (orijinalin 4 katı); "temiz
+eğri" değildir, ama orijinale en yakın vektördür.
+
 ### AI netleştirme ile (waifu2x)
 
 Küçük, bulanık kaynakta tracer'ın yapabileceği sınırlı: ayrıntı kaynakta yok. Vektörden önce görsel waifu2x

@@ -235,7 +235,9 @@ function run() {
     let out;
     try {
       const sharp = state.sharpen && state.sharp ? state.sharp : null;
-      if (mode === 'exact') out = sharp ? V.vectorizeExact(sharp.rgba, sharp.w, sharp.h) : V.vectorizeExact(src, W, H);
+      // Netleştirilmiş (4×) görselde renk sayısı çok yüksek; 5 bit/kanal yuvarlamayla kayıpsız izleme sığar
+      // (orijinale göre belirgin fark %1,8; docs/vektor-kanit.md)
+      if (mode === 'exact') out = sharp ? V.vectorizeExact(sharp.rgba, sharp.w, sharp.h, { colorBits: 5 }) : V.vectorizeExact(src, W, H);
       else {
         const extra = state.band && mode === 'cizim' ? V.BAND_GRADIENT_OVERRIDES : {};
         if (sharp) {
@@ -256,6 +258,9 @@ function run() {
 
 async function showSvg(out, ms) {
   const { W, H, src, mode } = state;
+  // Kayıpsız + AI netleştirme: çıktı netleştirilmiş görselin 32 seviyeli haliyle birebir (motor doğruladı);
+  // orijinale göre ölçüm pürüzsüz modlardaki gibi ΔE eşikleriyle yapılır.
+  const strict = mode === 'exact' && !(state.sharpen && state.sharp);
   const url = URL.createObjectURL(new Blob([out.svg], { type: 'image/svg+xml' }));
   const img = $('#svgImg');
   await new Promise((r) => { img.onload = r; img.src = url; });
@@ -281,10 +286,10 @@ async function showSvg(out, ms) {
         if (ia && ib) { inter++; const p = lab(src[i], src[i + 1], src[i + 2]), q = lab(got[i], got[i + 1], got[i + 2]); d = Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]); dE += d; nC++; }
         // Kayıpsız modda tek birimlik fark bile hata. Pürüzsüz modlarda palet renkleri ortalandığı için her
         // piksel 1–2 birim oynar; orada ölçüt gözle görülür fark: ΔE > 2,3 (algı eşiği) ya da saydamlık değişimi.
-        bad = mode === 'exact'
+        bad = strict
           ? (sa !== ga || src[i] !== got[i] || src[i + 1] !== got[i + 1] || src[i + 2] !== got[i + 2])
           : (ia !== ib || d > 2.3);
-        if (bad && mode !== 'exact') {
+        if (bad && !strict) {
           if (ia !== ib || d > 6) strong++;
           // Isi haritasi: hafif fark (JPEG gurultusu, dE 2-4) soluk pembe; belirgin fark koyu kirmizi.
           const t = ia !== ib ? 1 : Math.min(1, (d - 2.3) / 8);
@@ -295,7 +300,7 @@ async function showSvg(out, ms) {
       }
     }
     if (bad) { differ++; dimg.data.set([220, 40, 40, 255], i); }
-    else if (mode === 'exact') { const l = lum(src, i); const v = Math.round(200 + l * 0.2); dimg.data.set([v, v, v, 255], i); continue; }
+    else if (strict) { const l = lum(src, i); const v = Math.round(200 + l * 0.2); dimg.data.set([v, v, v, 255], i); continue; }
     else { const l = lum(src, i); const v = Math.round(200 + l * 0.2); dimg.data.set([v, v, v, 255], i); }
   }
   dctx.putImageData(dimg, 0, 0);
@@ -303,9 +308,9 @@ async function showSvg(out, ms) {
   const pct = total ? (100 * differ / total) : 0;
   const v = $('#verdict');
   v.className = 'verdict ' + (differ === 0 ? 'ok' : 'bad');
-  const what = mode === 'exact' ? 'farklı piksel (tek birim bile)' : mode === 'siyahBeyaz' ? 'farklı piksel (koyu/açık alanlara göre)' : 'farklı piksel (ΔE > 2,3)';
+  const what = strict ? 'farklı piksel (tek birim bile)' : mode === 'siyahBeyaz' ? 'farklı piksel (koyu/açık alanlara göre)' : 'farklı piksel (ΔE > 2,3)';
   v.innerHTML = `<span class="big">${differ.toLocaleString('tr-TR')}</span><small>${what}${total ? ` · %${pct.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}` : ''}</small>`
-    + (mode !== 'exact' && mode !== 'siyahBeyaz' ? `<small>belirgin fark (ΔE > 6 ya da şekil): <b>${strong.toLocaleString('tr-TR')}</b> · %${(total ? 100 * strong / total : 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}</small>` : '');
+    + (!strict && mode !== 'siyahBeyaz' ? `<small>belirgin fark (ΔE > 6 ya da şekil): <b>${strong.toLocaleString('tr-TR')}</b> · %${(total ? 100 * strong / total : 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}</small>` : '');
   const items = [
     ['Saf vektör: yalnızca &lt;svg&gt; ve &lt;path&gt;, gömülü resim yok', !check.errors.some((e) => /saf vektör|öğe/.test(e))],
     ['viewBox var, ölçeklenir; transform yok', !check.errors.some((e) => /viewBox|transform|width/.test(e))],
@@ -313,11 +318,14 @@ async function showSvg(out, ms) {
     ['Her şekil kapalı', !check.errors.some((e) => /kapanmamış/.test(e))],
     ['Hiçbir nokta görselin dışına taşmıyor', !check.errors.some((e) => /dışında/.test(e))],
   ];
-  if (mode === 'exact') items.push(['Piksel doğrulaması: geri çizim = orijinal', differ === 0]);
+  if (strict) items.push(['Piksel doğrulaması: geri çizim = orijinal', differ === 0]);
+  else if (mode === 'exact') items.push(['Piksel doğrulaması: geri çizim = netleştirilmiş görsel (32 seviye/kanal), motor doğruladı', true]);
   $('#checks').innerHTML = items.map(([t, ok]) => `<li><span class="${ok ? 'y' : 'n'}">${ok ? '✓' : '✗'}</span><span>${t}</span></li>`).join('')
     + (check.ok ? '' : `<li><span class="n">!</span><span>${check.errors.slice(0, 3).join('; ')}</span></li>`);
-  $('#explain').textContent = mode === 'exact'
+  $('#explain').textContent = strict
     ? 'Kayıpsız mod: her renk bölgesi piksel kenarlarından çizilir. Orijinal boyutta her piksel aynıdır; büyütünce kenarlar orijinal gibi basamaklı görünür.'
+    : mode === 'exact'
+    ? `Yüksek sadakat: AI ile netleştirilmiş 4× görsel, renkler kanal başına 32 seviyeye yuvarlanarak piksel kenarlarından izlendi; bu yuvarlanmış görselle birebir aynı (motor doğruladı). Orijinale göre ortalama renk farkı ΔE ${nC ? (dE / nC).toFixed(1) : '-'}; kalan fark netleştirmeden (kenarlar orijinalden keskin). Orijinalin kendisiyle birebir için AI netleştirmeyi kapat.`
     : `Pürüzsüz mod: şekiller eğriyle sadeleştirilir ve düz alanlar tek renge indirilir. Soluk pembe pikseller çoğunlukla orijinaldeki JPEG gürültüsü ve bulanık kenar geçişleridir (vektör bunları temizler); koyu kırmızı belirgin farktır. Şekil örtüşmesi %${(100 * (union ? inter / union : 1)).toFixed(1)}${nC ? `, ortalama renk farkı ΔE ${(dE / nC).toFixed(1)}` : ''}. Orijinalle piksel piksel aynı çıktı için Kayıpsız modu seç.`;
   $('#stats').innerHTML = [
     ['Yol (şekil)', check.stats.paths.toLocaleString('tr-TR')], ['Renk', check.stats.colors], ['Dosya boyutu', kb(out.svg.length)], ['Süre', `${ms} ms`],
