@@ -8,7 +8,7 @@ const settings = {
   color: '#f4efe6',
   size: '1080x1080',
   padding: 8,
-  shadow: true,
+  shadow: false,
   format: 'png',
   logo: null, // HTMLImageElement
   logoPos: 'br',
