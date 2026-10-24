@@ -10,6 +10,7 @@ const settings = {
   padding: 8,
   shadow: false,
   sharpen: false, // AI netleştirme (upscale-worker.js)
+  keepBg: false, // arka planı silme: görsel olduğu gibi (logo/çizim bütünüyle vektöre)
   format: 'png', // png | jpg | svg
   svgMode: 'sadakat', // sadakat | temiz | birebir
   logo: null, // HTMLImageElement
@@ -97,7 +98,7 @@ async function pump() {
 
   // Zaten şeffaf zeminli görsel (PNG/WebP, piksellerin ≥ %2'si saydam): arka plan silme atlanır ve hak
   // düşülmez; kendi saydamlığı korunur (model kenarları değiştirmesin; vektör/netleştirme için orijinal kalsın).
-  const own = await transparentPixels(item.file);
+  const own = settings.keepBg ? await decodePixels(item.file) : await transparentPixels(item.file);
   if (own) {
     if (!items.has(id)) { busy = false; return pump(); }
     item.status = 'working';
@@ -133,19 +134,24 @@ async function pump() {
   worker.postMessage({ type: 'run', id, blob: item.file });
 }
 
-// Dosya şeffaflık taşıyorsa RGBA tamponunu döndürür; yoksa null. (JPG her zaman null.)
-async function transparentPixels(file) {
-  if (!/png|webp|gif/i.test(file.type)) return null;
+// Dosyayı olduğu gibi RGBA'ya çözer (arka plan silinmez); çözülemezse null.
+async function decodePixels(file) {
   try {
     const bmp = await createImageBitmap(file);
     const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
     const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(bmp, 0, 0);
     const d = x.getImageData(0, 0, c.width, c.height).data;
-    let clear = 0;
-    for (let i = 3; i < d.length; i += 4) if (d[i] < 128) clear++;
-    if (clear < d.length / 4 * 0.02) return null;
-    return { width: c.width, height: c.height, buffer: d.buffer };
+    return { width: c.width, height: c.height, buffer: d.buffer, data: d };
   } catch { return null; }
+}
+// Dosya şeffaflık taşıyorsa RGBA tamponunu döndürür; yoksa null. (JPG her zaman null.)
+async function transparentPixels(file) {
+  if (!/png|webp|gif/i.test(file.type)) return null;
+  const own = await decodePixels(file);
+  if (!own) return null;
+  let clear = 0;
+  for (let i = 3; i < own.data.length; i += 4) if (own.data[i] < 128) clear++;
+  return clear < own.data.length / 4 * 0.02 ? null : own;
 }
 
 // ---------- AI netleştirme ----------
@@ -584,6 +590,7 @@ $('#padding').addEventListener('input', (e) => {
   $('#padding-out').textContent = `%${settings.padding}`;
   rerenderAll();
 });
+$('#keep-bg').addEventListener('change', (e) => { settings.keepBg = e.target.checked; });
 $('#sharpen').addEventListener('change', (e) => {
   settings.sharpen = e.target.checked;
   $('#sharpen-hint').hidden = !settings.sharpen;

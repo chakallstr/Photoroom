@@ -236,8 +236,20 @@ varsayılan SVG'sini (Yüksek sadakat, netleştirme kendiliğinden) indirdi; `ur
 | Bulanık logo 771×200 | ΔE 1,80, **%1,9** | ΔE 7,71, %27,5* | 496 / 0,4 MB | 60 s |
 
 \* Bu görseller opak (saydamlık yok); editör arka planı sildiği için ürün çıktısı "kesilmiş ürün"dür ve orijinal
-dosyadaki zemin pikselleri farka girer. Ürünün tanımına göre karşılaştırma (SVG ↔ ürünün kendi PNG'si) altı
-görselde de %0,0–1,9. Kendi saydamlığı olan girdide (ejderha) SVG orijinal dosyayla da %1,4.
+dosyadaki zemin pikselleri farka girer. Bunun için editöre "Arka planı silme (olduğu gibi kullan)" seçeneği
+eklendi (model atlanır, hak düşülmez). Aynı koşu bu seçenekle (`KEEP_BG=1`), **orijinal dosyaya göre**:
+
+| Görsel | SVG ↔ orijinal dosya | Yol / boyut | Süre |
+|---|---|---|---|
+| Ejderha 267×218 | ΔE 1,87, **%1,4** | 2.283 / 1,9 MB | 21 s |
+| Anime 640×480 | ΔE 1,68, **%0,1** | 2.545 / 4,9 MB | 85 s |
+| Panda 191×169 | ΔE 1,98, **%1,4** | 3.883 / 1,1 MB | 10 s |
+| Pikachu 224×224 | ΔE 1,50, **%1,0** | 4.634 / 2,6 MB | 15 s |
+| Temiz logo 771×200 | ΔE 1,26, **%0,4** | 262 / 0,2 MB | 43 s |
+| Bulanık logo 771×200 | ΔE 1,20, **%0,0** | 1.292 / 1,2 MB | 43 s |
+
+Altı görselde de orijinal dosyaya göre belirgin fark ≤ %1,4 (hedef ≤ %5). Ürün PNG'sine göre ölçüm aynı değerleri
+verdi (arka plan silinmediği için ikisi aynı kaynak).
 
 ### AI netleştirme ile (waifu2x)
 

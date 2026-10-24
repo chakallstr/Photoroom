@@ -5,7 +5,7 @@ const browser = await chromium.launch(); const ctx = await browser.newContext({ 
 page.on('pageerror', (e) => console.log('pageerror', e.message));
 for (let i = 0; i < 30; i++) { try { await page.goto('http://localhost:8000/app.html'); break; } catch { await new Promise((r) => setTimeout(r, 1000)); } }
 const t0 = Date.now(); while (Date.now() - t0 < 400000) { const st = await page.evaluate(() => document.querySelector('#status')?.textContent ?? ''); if (/Hazır/.test(st)) break; await page.waitForTimeout(5000); }
-await page.click('#bg-mode [data-value="transparent"]'); await page.selectOption('#size', 'original');
+await page.click('#bg-mode [data-value="transparent"]'); await page.selectOption('#size', 'original'); if (process.env.KEEP_BG) await page.click('#keep-bg');
 for (const file of files) {
   const name = file.split('/').pop().replace(/\.[^.]+$/, '');
   const t1 = Date.now();

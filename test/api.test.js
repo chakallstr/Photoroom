@@ -428,3 +428,11 @@ test('editörde SVG dışa aktarma seçenekleri var ve vektör motoru tembel yü
   assert.match(js, /import\('\.\/vector\.js'\)/);
   assert.match(js, /colorBits: 5/);
 });
+
+test('editörde "arka planı silme" seçeneği var ve seçilince model atlanır', async () => {
+  const fs = await import('node:fs');
+  const html = fs.readFileSync(new URL('../public/app.html', import.meta.url), 'utf8');
+  assert.match(html, /id="keep-bg"/);
+  const js = fs.readFileSync(new URL('../public/assets/app.js', import.meta.url), 'utf8');
+  assert.match(js, /settings\.keepBg \? await decodePixels\(item\.file\)/);
+});
