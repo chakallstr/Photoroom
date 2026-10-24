@@ -104,10 +104,10 @@ Kendin denemek için: `/vektor-lab.html`. Ölçümler ve kanıt: `docs/vektor-ka
 
 ### Editörde SVG indirme
 
-"Dosya türü → SVG" seçilince üç vektör türü var: **Yüksek sadakat** (varsayılan; AI netleştirme + kanal başına
+"Dosya türü → SVG" seçilince iki vektör türü var: **Yüksek sadakat** (varsayılan; AI netleştirme + kanal başına
 32 renk seviyesi + piksel kenarlı kayıpsız izleme; orijinale göre belirgin fark %0–2, netleştirmeyi kendiliğinden
-açar), **Temiz (az parça)** (eğriler; logo/ikon/kesim/düzenleme için, orijinalden farklıdır) ve **Birebir**
-(kesilmiş görselle piksel piksel aynı). Logo/çizimi bütünüyle çevirmek için "Arka planı silme (olduğu gibi
+açar) ve **Birebir** (görselle piksel piksel aynı, 0 fark). Eğri tabanlı az parçalı çizim (orijinalden farklı)
+yalnızca `/vektor-lab.html` sayfasında (Çizim/Logo). Logo/çizimi bütünüyle çevirmek için "Arka planı silme (olduğu gibi
 kullan)" seçeneği model çalıştırmaz ve hak düşmez; bu yolla altı örnekte orijinal dosyaya göre belirgin fark
 ≤ %1,4 ölçüldü (`docs/vektor-kanit.md`). SVG kesilmiş ürünü şeffaf zeminde
 verir; ölçü/kenar boşluğu/gölge uygulanmaz. Zaten şeffaf zeminli PNG/WebP yüklenirse arka plan silme atlanır ve

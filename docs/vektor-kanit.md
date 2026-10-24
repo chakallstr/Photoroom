@@ -251,6 +251,21 @@ eklendi (model atlanır, hak düşülmez). Aynı koşu bu seçenekle (`KEEP_BG=1
 Altı görselde de orijinal dosyaya göre belirgin fark ≤ %1,4 (hedef ≤ %5). Ürün PNG'sine göre ölçüm aynı değerleri
 verdi (arka plan silinmediği için ikisi aynı kaynak).
 
+**İkinci koşu (tekrarlanabilirlik) ve "Birebir" türü.** Aynı koşu ikinci kez, iki SVG türüyle:
+
+| Görsel | Yüksek sadakat (2. koşu) | Birebir | Birebir yol / boyut |
+|---|---|---|---|
+| Ejderha | %1,4 | ΔE 0,02, **%0,0** | 14.383 / 0,9 MB |
+| Anime | %0,1 | ΔE 0,00, **%0,0** | 35.768 / 3,4 MB |
+| Panda | %1,4 | ΔE 0,00, **%0,0** | 8.397 / 0,6 MB |
+| Pikachu | %1,0 | ΔE 0,00, **%0,0** | 12.439 / 0,7 MB |
+| Temiz logo | %0,4 | ΔE 0,00, **%0,0** | 518 / 0,1 MB |
+| Bulanık logo | %0,0 | ΔE 0,00, **%0,0** | 13.431 / 1,0 MB |
+
+Yüksek sadakat değerleri ilk koşuyla birebir aynı (belirlenimci). "Birebir" türü altı görselde de sıfır fark
+(ejderhadaki 0,02 webp/png çözme farkı). Üründe artık yalnızca bu iki tür var; eğri tabanlı az parçalı çizim
+(orijinalden farklı, gölgeli çizimde belirgin fark ~%20) laboratuvarda "Çizim/Logo" olarak kaldı.
+
 ### AI netleştirme ile (waifu2x)
 
 Küçük, bulanık kaynakta tracer'ın yapabileceği sınırlı: ayrıntı kaynakta yok. Vektörden önce görsel waifu2x

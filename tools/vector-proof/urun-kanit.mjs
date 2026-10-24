@@ -19,6 +19,11 @@ for (const file of files) {
   await page.click('#format [data-value="svg"]');
   [d] = await Promise.all([page.waitForEvent('download', { timeout: 900000 }), page.click('[data-action="download"]')]);
   await d.saveAs(`${outDir}/${name}.svg`);
+  // Birebir türü
+  await page.click('#svg-mode [data-value="birebir"]');
+  [d] = await Promise.all([page.waitForEvent('download', { timeout: 900000 }), page.click('[data-action="download"]')]);
+  await d.saveAs(`${outDir}/${name}.birebir.svg`);
+  await page.click('#svg-mode [data-value="sadakat"]');
   console.log(`${name}: PNG + SVG indirildi (${Math.round((Date.now() - t1) / 1000)} s) | durum: ${await page.evaluate(() => document.querySelector('#status')?.textContent.trim().slice(0, 70))}`);
   // Sıradaki görsel için temizle
   await page.click('#clear-all'); await page.waitForTimeout(500);

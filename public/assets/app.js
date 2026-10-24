@@ -12,7 +12,7 @@ const settings = {
   sharpen: false, // AI netleştirme (upscale-worker.js)
   keepBg: false, // arka planı silme: görsel olduğu gibi (logo/çizim bütünüyle vektöre)
   format: 'png', // png | jpg | svg
-  svgMode: 'sadakat', // sadakat | temiz | birebir
+  svgMode: 'sadakat', // sadakat | birebir
   logo: null, // HTMLImageElement
   logoPos: 'br',
   logoSize: 18, // görselin kısa kenarına göre yüzde
@@ -405,8 +405,9 @@ function outputName(item) {
 
 // ---------- Vektör (SVG) ----------
 // Motor ilk kullanımda yüklenir (vector.js + WASM). Kaynak: kesilmiş ürün (şeffaf zemin); AI netleştirme açıksa
-// netleştirilmiş 4× hali. Türler: temiz (eğri, az parça), sadakat (netleştirilmiş + 32 seviye + kayıpsız),
-// birebir (kesilmiş görselle piksel piksel aynı). Çıktı her durumda validateSvg'den geçer (vector.js içinde).
+// netleştirilmiş 4× hali. Türler: sadakat (netleştirilmiş + 32 seviye + kayıpsız; varsayılan) ve birebir
+// (görselle piksel piksel aynı). Eğri tabanlı az parçalı çizim (orijinalden farklı) yalnızca laboratuvarda.
+// Çıktı her durumda validateSvg'den geçer (vector.js içinde).
 let vectorMod = null;
 async function vectorEngine() {
   if (!vectorMod) {
@@ -430,16 +431,7 @@ async function vectorOf(item) {
     r.svg = r.svg.replace(/ width="\d+" height="\d+"/, ` width="${W}" height="${H}"`);
     return r;
   }
-  if (sharp) {
-    return V.vectorizePixels(rgbaOf(sharp), sharp.width, sharp.height, { preset: 'cizim', outWidth: W, outHeight: H, scale: sharp.width / W, ...V.BAND_GRADIENT_OVERRIDES });
-  }
-  const plan = V.planScale(W, H);
-  let src = base;
-  if (plan.scale !== 1) {
-    src = document.createElement('canvas'); src.width = plan.width; src.height = plan.height;
-    const x = src.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(base, 0, 0, plan.width, plan.height);
-  }
-  return V.vectorizePixels(rgbaOf(src), src.width, src.height, { preset: 'cizim', outWidth: W, outHeight: H, scale: plan.scale });
+  throw new Error(`Bilinmeyen vektör türü: ${settings.svgMode}`);
 }
 async function svgBlob(item) {
   setStatus('Vektöre çevriliyor… (büyük görsellerde birkaç saniye)', 1);
