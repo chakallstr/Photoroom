@@ -268,11 +268,11 @@ function fitRegion(pixels, w, rgba, diag) {
  *   gradients: gradyanla boyanacak bölgeler (büyükten küçüğe, en fazla `max`);
  *   flats: gradyana sığmayan büyük bölgeler (kendi içinde az sayıda düz tonla boyanır).
  */
-export function analyzeRegions(rgba, w, h, { minArea, max = 24, scale = 1, onReject } = {}) {
+export function analyzeRegions(rgba, w, h, { minArea, max = 24, scale = 1, edgeRadius, onReject } = {}) {
   const n = w * h;
   minArea ??= Math.max(150, Math.round(n * 0.003));
   if (n < minArea) return { gradients: [], flats: [] };
-  const { R, G, B, valid } = blurred(rgba, w, h, Math.max(1, Math.round(scale)));
+  const { R, G, B, valid } = blurred(rgba, w, h, edgeRadius ?? Math.max(1, Math.round(scale)));
   const gradients = [];
   const flats = [];
   const tryFit = (pixels, step) => {

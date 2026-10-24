@@ -10,8 +10,8 @@ import { analyzeRegions, gradientDef, regionMask } from './gradients.js';
 // smooth: çoğunluk filtresi yarıçapı (orijinal görsel pikseli). Eğri ayarları 8 kat büyütmede göz kontrolüyle
 // seçildi: köşe eşiği 90 dik çizgileri en düz tutuyor (30'da harf gövdeleri dalgalı eğriye dönüşüyor).
 export const PRESETS = {
-  logo: { binary: false, paletteColors: 8, regions: true, smooth: 0.67, colorPrecision: 7, filterSpeckle: 8, layerDifference: 8, cornerThreshold: 90, lengthThreshold: 10, spliceThreshold: 60 },
-  cizim: { binary: false, paletteColors: 16, regions: true, smooth: 0.67, colorPrecision: 7, filterSpeckle: 4, layerDifference: 8, cornerThreshold: 90, lengthThreshold: 10, spliceThreshold: 60 },
+  logo: { binary: false, paletteColors: 8, regions: true, localColors: 4, localTarget: 4, smooth: 0.67, colorPrecision: 7, filterSpeckle: 8, layerDifference: 8, cornerThreshold: 90, lengthThreshold: 10, spliceThreshold: 60 },
+  cizim: { binary: false, paletteColors: 16, regions: true, soft: true, localColors: 6, localTarget: 3, smooth: 0.67, colorPrecision: 7, filterSpeckle: 4, layerDifference: 8, cornerThreshold: 90, lengthThreshold: 10, spliceThreshold: 60 },
   // Çok renkli, gölgeli çizimler için paletsiz: renk doğruluğu en yüksek, dosya daha büyük.
   detayli: { binary: false, colorPrecision: 6, filterSpeckle: 2, layerDifference: 24, cornerThreshold: 45, lengthThreshold: 3.5, spliceThreshold: 45 },
   siyahBeyaz: { binary: true, colorPrecision: 8, filterSpeckle: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, spliceThreshold: 45 },
@@ -129,16 +129,21 @@ function mapToPalette(rgba, palette) {
 
 // Bulanıklıktan doğan geçiş tonlarını bulur: renk uzayında iki başka palet renginin arasında kalan
 // (C ≈ A + t·(B−A), 0.1 < t < 0.9) VE pikselleri çoğunlukla başka renklere komşu (ince şerit) renkler.
-export function findTransitionColors(idx, width, height, palette, { maxDelta = 10, minEdgeShare = 0.3 } = {}) {
+export function findTransitionColors(idx, width, height, palette, { maxDelta = 10, minEdgeShare = 0.3, colorOf = null } = {}) {
   const k = palette.length;
+  const NONE = idx instanceof Uint8Array ? 255 : -1;
+  const col = (l) => (colorOf ? colorOf[l] : l);
   const area = new Array(k).fill(0), edge = new Array(k).fill(0);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const c = idx[y * width + x];
-      if (c === 255) continue;
+      const l = idx[y * width + x];
+      if (l === NONE) continue;
+      const c = col(l);
       area[c]++;
-      if ((x > 0 && idx[y * width + x - 1] !== c) || (x < width - 1 && idx[y * width + x + 1] !== c) ||
-          (y > 0 && idx[(y - 1) * width + x] !== c) || (y < height - 1 && idx[(y + 1) * width + x] !== c)) edge[c]++;
+      // Kenar kararı renge göre (farklı etiket, aynı renk kenar değildir)
+      const other = (q) => { const m = idx[q]; return m !== NONE ? col(m) !== c : true; };
+      if ((x > 0 && other(y * width + x - 1)) || (x < width - 1 && other(y * width + x + 1)) ||
+          (y > 0 && other((y - 1) * width + x)) || (y < height - 1 && other((y + 1) * width + x))) edge[c]++;
     }
   }
   const out = new Set();
@@ -167,13 +172,14 @@ export function findTransitionColors(idx, width, height, palette, { maxDelta = 1
 // Saydam pikseller (255) oy vermez ve değişmez.
 export function modeFilter(idx, width, height, radius, colors) {
   if (radius < 1) return idx;
+  const NONE = idx instanceof Uint8Array ? 255 : -1;
   const out = idx.slice();
   const counts = new Int32Array(colors);
   for (let y = 0; y < height; y++) {
     const y0 = Math.max(0, y - radius), y1 = Math.min(height - 1, y + radius);
     for (let x = 0; x < width; x++) {
       const c = idx[y * width + x];
-      if (c === 255) continue;
+      if (c === NONE) continue;
       const x0 = Math.max(0, x - radius), x1 = Math.min(width - 1, x + radius);
       counts.fill(0);
       let best = c, bestN = 0;
@@ -181,7 +187,7 @@ export function modeFilter(idx, width, height, radius, colors) {
         const row = yy * width;
         for (let xx = x0; xx <= x1; xx++) {
           const v = idx[row + xx];
-          if (v === 255) continue;
+          if (v === NONE) continue;
           const n = ++counts[v];
           if (n > bestN || (n === bestN && v === c)) { bestN = n; best = v; }
         }
@@ -212,12 +218,13 @@ export function applyPalette(rgba, palette, width, height, { smooth = 0 } = {}) 
 // bölgede olanlar). Kenar pikselleri bulanıklıktan komşu rengi taşır; ortalamaya katılsalar düz alanların
 // rengi kayar (ölçülen ΔE ~3 → ~1). Saydam pikseller (255) saydam kalır.
 function paintIndexed(rgba, idx, k, width, height) {
+  const NONE = idx instanceof Uint8Array ? 255 : -1;
   const out = new Uint8Array(rgba.length);
   const sums = Array.from({ length: k }, () => [0, 0, 0, 0]);
   const all = Array.from({ length: k }, () => [0, 0, 0, 0]);
   for (let p = 0, i = 0; i < rgba.length; p++, i += 4) {
     const c = idx[p];
-    if (c === 255) continue;
+    if (c === NONE) continue;
     const a = all[c];
     a[0] += rgba[i]; a[1] += rgba[i + 1]; a[2] += rgba[i + 2]; a[3]++;
     if (width && height) {
@@ -235,18 +242,13 @@ function paintIndexed(rgba, idx, k, width, height) {
     colors.push(sm[3] ? [Math.round(sm[0] / sm[3]), Math.round(sm[1] / sm[3]), Math.round(sm[2] / sm[3])] : [0, 0, 0]);
   }
   for (let p = 0, i = 0; i < rgba.length; p++, i += 4) {
-    if (idx[p] === 255) continue; // saydam kalır (out sıfırla başlar)
+    if (idx[p] === NONE) continue; // saydam kalır (out sıfırla başlar)
     const c = colors[idx[p]];
     out[i] = c[0]; out[i + 1] = c[1]; out[i + 2] = c[2]; out[i + 3] = 255;
   }
   return out;
 }
 
-// Bölgeye duyarlı palet. Görsel önce renk-sürekli bölgelere ayrılır (gradients.js). Gradyana sığan bölge tek
-// renge (ortalama) boyanır; üstüne sonradan gradyanlı yol çizilir. Sığmayan büyük bölge kendi içinde en fazla
-// `localColors` tona ayrılır (çizgi film gölgelemesi: ana ton + gölge + ışık). Bölge dışı pikseller (kontur,
-// küçük ayrıntılar) ortak paletle boyanır; bölge kenarındaki geçiş pikselleri bölge tonlarına da eşlenebilir.
-// Tek paletle (16 renk) tüm görseli boyamaya göre tonlar bölgelere ait kalır, komşu bölgelerin tonları karışmaz.
 // Bir bölgenin tonları: en az sayıda tonla bölge pikselleri ortalama ΔE ≤ target olacak şekilde (1'den
 // maxColors'a kadar denenir). Böylece düz bölge tek ton kalır (gürültü parçalanmaz), gölgeli bölge gerektiği
 // kadar tona ayrılır.
@@ -269,7 +271,14 @@ export function regionTones(rgba, pixels, { maxColors = 4, mergeDelta = 6, targe
   return best ? best.pal : [[50, 0, 0]];
 }
 
-export function applyRegionPalette(rgba, width, height, { gradients, flats }, { maxColors = 16, smooth = 0, localColors = 4, localMerge = 6, localTarget = 4, mergeDelta = 5 } = {}) {
+// Bölgeye duyarlı palet. Görsel önce renk-sürekli bölgelere ayrılır (gradients.js). Gradyana sığan bölge tek
+// renge (ortalama) boyanır; üstüne sonradan gradyanlı yol çizilir. Sığmayan büyük bölge kendi içinde en fazla
+// `localColors` tona ayrılır (çizgi film gölgelemesi: ana ton + gölge + ışık). Bölge dışı pikseller (kontur,
+// küçük ayrıntılar) ortak paletle boyanır; bölge kenarındaki geçiş pikselleri bölge tonlarına da eşlenebilir.
+// Tek paletle (16 renk) tüm görseli boyamaya göre tonlar bölgelere ait kalır, komşu bölgelerin tonları karışmaz.
+//
+// Sonuç bir "etiket planı": her piksel için etiket (Int32, -1 saydam), etiket → palet rengi, etiket → bölge.
+export function buildRegionLabels(rgba, width, height, { gradients, flats }, { maxColors = 16, smooth = 0, localColors = 4, localMerge = 6, localTarget = 4, mergeDelta = 5, snapRadius = 0, blurRadius = 0 } = {}) {
   const n = width * height;
   const owner = new Int32Array(n).fill(-1); // piksel → bölge sırası (gradients sonra flats)
   const regions = [...gradients.map((g) => ({ pixels: g.pixels, gradient: true })), ...flats.map((f) => ({ pixels: f.pixels, gradient: false }))];
@@ -288,40 +297,51 @@ export function applyRegionPalette(rgba, width, height, { gradients, flats }, { 
     }
     return regionTones(rgba, r.pixels, { maxColors: localColors, mergeDelta: localMerge, target: localTarget });
   });
-  // Bölge tonları ortak palete eklenir; birbirine çok yakın tonlar (ΔE < mergeDelta) tek renge indirgenir ki
-  // aynı mavi on ayrı harfte on ayrı renk olmasın (yoksa kenarlarda ince şeritler ve gereksiz yollar doğar).
-  const offsets = [];
-  const alias = []; // birleşik palet sırası → gerçek palet sırası
+  // Etiketler: ortak renkler + her bölgenin tonları. Birbirine çok yakın tonlar (ΔE < mergeDelta) aynı palet
+  // rengine bağlanır ki aynı mavi on ayrı harfte on ayrı renk olmasın (kenarlarda ince şeritler ve gereksiz yollar).
+  const labelColor = []; // etiket → palet sırası
+  const labelOwner = []; // etiket → bölge (-1 ortak)
   const addColor = (lab) => {
     for (let c = 0; c < palette.length; c++) if (Math.sqrt(dist2(lab, palette[c])) < mergeDelta) return c;
     palette.push(lab);
     return palette.length - 1;
   };
-  for (let c = 0; c < globalCount; c++) alias.push(c);
-  for (const pal of local) { offsets.push(alias.length); for (const lab of pal) alias.push(addColor(lab)); }
-  // Eşleme: bölge pikseli kendi tonlarından en yakını; dışarısı tüm paletten en yakını
-  const idx = mapToPalette(rgba, palette);
+  for (let c = 0; c < globalCount; c++) { labelColor.push(c); labelOwner.push(-1); }
+  const offsets = [];
+  local.forEach((pal, r) => { offsets.push(labelColor.length); for (const lab of pal) { labelColor.push(addColor(lab)); labelOwner.push(r); } });
+  // Eşleme: bölge pikseli kendi tonlarından en yakını; dışarısı tüm paletten en yakını.
+  // Bölge pikselleri ton atamasından önce bölgeyle sınırlı bulanıklaştırılır: yumuşak gölgede ton sınırı
+  // piksel gürültüsüne değil, gölgenin eş-ışık eğrisine oturur (pürüzsüz bant kenarı).
+  // Palet rengi → o rengi taşıyan ilk etiket (bölge dışı piksel bir bölge tonuna en yakınsa o tonun etiketini alır)
+  const labelOfColor = new Map();
+  labelColor.forEach((c, l) => { if (!labelOfColor.has(c)) labelOfColor.set(c, l); });
+  const nearest = mapToPalette(rgba, palette);
+  const labels = new Int32Array(n);
+  for (let p = 0; p < n; p++) labels[p] = nearest[p] === 255 ? -1 : labelOfColor.get(nearest[p]);
+  const softSrc = blurRadius > 0 ? maskedBlur(rgba, owner, width, height, blurRadius) : rgba;
   const labCache = new Map();
   for (let p = 0; p < n; p++) {
     const r = owner[p];
-    if (r < 0 || idx[p] === 255) continue;
+    if (r < 0 || labels[p] < 0) continue;
     const pal = local[r];
-    if (pal.length === 1) { idx[p] = alias[offsets[r]]; continue; }
-    const i = p * 4, key = ((rgba[i] >> 3) << 10) | ((rgba[i + 1] >> 3) << 5) | (rgba[i + 2] >> 3);
+    if (pal.length === 1) { labels[p] = offsets[r]; continue; }
+    const i = p * 4, key = ((softSrc[i] >> 3) << 10) | ((softSrc[i + 1] >> 3) << 5) | (softSrc[i + 2] >> 3);
     let lab = labCache.get(key);
-    if (!lab) { lab = srgbToLab((rgba[i] & 0xf8) + 4, (rgba[i + 1] & 0xf8) + 4, (rgba[i + 2] & 0xf8) + 4); labCache.set(key, lab); }
+    if (!lab) { lab = srgbToLab((softSrc[i] & 0xf8) + 4, (softSrc[i + 1] & 0xf8) + 4, (softSrc[i + 2] & 0xf8) + 4); labCache.set(key, lab); }
     let best = 0, bd = Infinity;
     for (let c = 0; c < pal.length; c++) { const dd = dist2(lab, pal[c]); if (dd < bd) { bd = dd; best = c; } }
-    idx[p] = alias[offsets[r] + best];
+    labels[p] = offsets[r] + best;
   }
   // Ortak paletteki geçiş tonları (bulanık kenar karışımları) atılır; bölge tonlarına dokunulmaz
   if (palette.length > 2) {
-    const drop = new Set([...findTransitionColors(idx, width, height, palette)].filter((c) => c < globalCount));
+    const drop = new Set([...findTransitionColors(labels, width, height, palette.map((_, c) => palette[c]), { colorOf: labelColor })].filter((c) => c < globalCount));
     if (drop.size) {
+      // Atılan rengin pikseli, kalan tüm renkler (ortak + bölge tonları) arasından en yakınını alır; ton ise o
+      // tonun etiketine geçer (kontur dibindeki gölge pikseli komşu bölgenin koyu tonuna katılır).
       const keep = palette.map((_, c) => c).filter((c) => !drop.has(c));
       const remap = new Map();
       for (let p = 0; p < n; p++) {
-        if (idx[p] === 255 || !drop.has(idx[p])) continue;
+        if (labels[p] < 0 || labelOwner[labels[p]] >= 0 || !drop.has(labelColor[labels[p]])) continue;
         const i = p * 4, key = ((rgba[i] >> 3) << 10) | ((rgba[i + 1] >> 3) << 5) | (rgba[i + 2] >> 3);
         let best = remap.get(key);
         if (best === undefined) {
@@ -330,12 +350,164 @@ export function applyRegionPalette(rgba, width, height, { gradients, flats }, { 
           for (const c of keep) { const dd = dist2(lab, palette[c]); if (dd < bd) { bd = dd; best = c; } }
           remap.set(key, best);
         }
-        idx[p] = best;
+        labels[p] = labelOfColor.get(best);
       }
     }
   }
-  const smoothed = smooth > 0 ? modeFilter(idx, width, height, smooth, palette.length) : idx;
-  return paintIndexed(rgba, smoothed, palette.length, width, height);
+  if (snapRadius > 0) snapBlends(rgba, labels, owner, palette, labelColor, labelOwner, width, height, snapRadius);
+  const smoothed = smooth > 0 ? modeFilter(labels, width, height, smooth, labelColor.length) : labels;
+  return { labels: smoothed, palette, labelColor, labelOwner, owner, regions, width, height };
+}
+
+// Etiketli görüntüyü boyar: renk, etiketin palet rengine bağlı tüm piksellerin iç ortalamasıdır (paintIndexed).
+export function paintLabels(rgba, labels, plan, width, height) {
+  const idx = new Int32Array(labels.length);
+  for (let p = 0; p < labels.length; p++) idx[p] = labels[p] < 0 ? -1 : plan.labelColor[labels[p]];
+  return paintIndexed(rgba, idx, plan.palette.length, width, height);
+}
+
+// Eski arayüz: planı aynı çözünürlükte boyar (testler ve tek ölçekli kullanım).
+export function applyRegionPalette(rgba, width, height, analysis, opts = {}) {
+  const plan = buildRegionLabels(rgba, width, height, analysis, opts);
+  return paintLabels(rgba, plan.labels, plan, width, height);
+}
+
+// Yumuşak bölgeler: birden çok tonlu düz bölgeler. Boyalı görüntüde tek (en yaygın) tona indirilir; ton bantları
+// ayrı katman olarak döndürülür (çağıran bunları bulanıklaştırıp bölgeye kırparak üstüne çizer). Boyalı görüntü
+// yerinde değiştirilir. Dönüş: [{ pixels (bölgenin piksel sıraları, bu çözünürlükte), bands (rgba), tones }].
+export function extractSoftRegions(painted, labels, plan, width, height) {
+  // Üyelik uzamsal `owner` haritasından (bölgeleme + kenara yapışan pikseller); etiket rengi aynı olan uzak
+  // pikseller bölgeye girmez.
+  const { owner, regions } = plan;
+  const members = regions.map(() => []);
+  for (let p = 0; p < labels.length; p++) { const r = owner[p]; if (r >= 0 && labels[p] >= 0) members[r].push(p); }
+  const soft = [];
+  regions.forEach((r, ri) => {
+    if (r.gradient || !members[ri].length) return;
+    const count = new Map();
+    for (const p of members[ri]) count.set(labels[p], (count.get(labels[p]) ?? 0) + 1);
+    if (count.size < 2) return;
+    const baseLabel = [...count.entries()].sort((a, b) => b[1] - a[1])[0][0];
+    const bands = new Uint8Array(painted.length);
+    let base = null;
+    for (const p of members[ri]) { const i = p * 4; bands[i] = painted[i]; bands[i + 1] = painted[i + 1]; bands[i + 2] = painted[i + 2]; bands[i + 3] = 255; if (!base && labels[p] === baseLabel) base = [painted[i], painted[i + 1], painted[i + 2]]; }
+    for (const p of members[ri]) { const i = p * 4; painted[i] = base[0]; painted[i + 1] = base[1]; painted[i + 2] = base[2]; }
+    soft.push({ pixels: Uint32Array.from(members[ri]), bands, tones: count.size });
+  });
+  return { soft, members };
+}
+
+// Bantları bölge dışına `radius` piksel genişletir (bulanıklaştırınca kenarda saydamlığa sönmesin; kırpma zaten
+// bölge sınırında keser). Her turda boş piksel dolu 4-komşusunun rengini alır.
+export function dilateBands(bands, width, height, radius) {
+  let src = bands;
+  for (let t = 0; t < radius; t++) {
+    const out = src.slice();
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const p = y * width + x, i = p * 4;
+        if (src[i + 3]) continue;
+        const q = (x > 0 && src[i - 1]) ? p - 1 : (x < width - 1 && src[i + 7]) ? p + 1 : (y > 0 && src[i - width * 4 + 3]) ? p - width : (y < height - 1 && src[i + width * 4 + 3]) ? p + width : -1;
+        if (q < 0) continue;
+        out[i] = src[q * 4]; out[i + 1] = src[q * 4 + 1]; out[i + 2] = src[q * 4 + 2]; out[i + 3] = 255;
+      }
+    }
+    src = out;
+  }
+  return src;
+}
+
+// Bölgeyle sınırlı kutu bulanıklığı (iki geçiş ≈ Gauss). Yalnızca aynı bölgedeki pikseller ortalamaya girer.
+function maskedBlur(rgba, owner, width, height, radius) {
+  const n = width * height;
+  let src = rgba;
+  for (let pass = 0; pass < 2; pass++) {
+    const out = new Uint8Array(rgba.length);
+    // Yatay sonra dikey ayrılabilir geçiş
+    const tmp = new Float32Array(n * 3), cnt = new Int32Array(n);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const p = y * width + x, o = owner[p];
+        if (o < 0) continue;
+        let r = 0, g = 0, b = 0, c = 0;
+        for (let xx = Math.max(0, x - radius); xx <= Math.min(width - 1, x + radius); xx++) {
+          const q = y * width + xx;
+          if (owner[q] !== o) continue;
+          r += src[q * 4]; g += src[q * 4 + 1]; b += src[q * 4 + 2]; c++;
+        }
+        tmp[p * 3] = r / c; tmp[p * 3 + 1] = g / c; tmp[p * 3 + 2] = b / c; cnt[p] = c;
+      }
+    }
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const p = y * width + x, o = owner[p];
+        if (o < 0) { out[p * 4] = src[p * 4]; out[p * 4 + 1] = src[p * 4 + 1]; out[p * 4 + 2] = src[p * 4 + 2]; out[p * 4 + 3] = src[p * 4 + 3]; continue; }
+        let r = 0, g = 0, b = 0, c = 0;
+        for (let yy = Math.max(0, y - radius); yy <= Math.min(height - 1, y + radius); yy++) {
+          const q = yy * width + x;
+          if (owner[q] !== o) continue;
+          r += tmp[q * 3]; g += tmp[q * 3 + 1]; b += tmp[q * 3 + 2]; c++;
+        }
+        out[p * 4] = Math.round(r / c); out[p * 4 + 1] = Math.round(g / c); out[p * 4 + 2] = Math.round(b / c); out[p * 4 + 3] = 255;
+      }
+    }
+    src = out;
+  }
+  return src;
+}
+
+// Karışım piksellerini uçlara yapıştırır. Bölge dışı bir pikselin rengi, çevresindeki (yarıçap r) iki palet
+// renginin arasındaysa (C ≈ A + t·(B−A)), yakın olduğu uca eşlenir. Kontur ile dolgu arasındaki bulanık kahverengi
+// şerit böylece ya kontura ya dolguya katılır; ikinci bir "gölge kontur" oluşmaz. Yalnızca bölge piksellerinin
+// renkleri uç olarak alınır (onlar güvenilir); kontur pikselleri kendi aralarında dokunulmadan kalır.
+function snapBlends(rgba, labels, owner, palette, labelColor, labelOwner, width, height, r) {
+  const out = labels.slice();
+  const newOwner = owner.slice();
+  const cache = new Map();
+  const labOf = (p) => {
+    const i = p * 4, key = ((rgba[i] >> 3) << 10) | ((rgba[i + 1] >> 3) << 5) | (rgba[i + 2] >> 3);
+    let lab = cache.get(key);
+    if (!lab) { lab = srgbToLab((rgba[i] & 0xf8) + 4, (rgba[i + 1] & 0xf8) + 4, (rgba[i + 2] & 0xf8) + 4); cache.set(key, lab); }
+    return lab;
+  };
+  const near = [];
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const p = y * width + x;
+      if (owner[p] >= 0 || labels[p] < 0) continue;
+      near.length = 0;
+      for (let yy = Math.max(0, y - r); yy <= Math.min(height - 1, y + r); yy++) {
+        for (let xx = Math.max(0, x - r); xx <= Math.min(width - 1, x + r); xx++) {
+          const q = yy * width + xx;
+          const l = labels[q];
+          if (l < 0 || owner[q] < 0) continue;
+          if (!near.includes(l)) near.push(l);
+        }
+      }
+      if (!near.length) continue;
+      // Uç adayları: komşu bölge tonları + pikselin kendi etiketi (kontur rengi olabilir)
+      const ends = near.slice();
+      if (!ends.includes(labels[p])) ends.push(labels[p]);
+      const C = labOf(p);
+      let best = -1, bestD = 12; // ΔE < 12: doğru parçasına yeterince yakın
+      for (let a = 0; a < ends.length; a++) {
+        for (let b = a + 1; b < ends.length; b++) {
+          const A = palette[labelColor[ends[a]]], B = palette[labelColor[ends[b]]];
+          const AB = [B[0] - A[0], B[1] - A[1], B[2] - A[2]];
+          const len2 = AB[0] ** 2 + AB[1] ** 2 + AB[2] ** 2;
+          if (len2 < 100) continue; // uçlar zaten aynı renk
+          const t = ((C[0] - A[0]) * AB[0] + (C[1] - A[1]) * AB[1] + (C[2] - A[2]) * AB[2]) / len2;
+          if (t <= 0.05 || t >= 0.95) continue;
+          const P = [A[0] + t * AB[0], A[1] + t * AB[1], A[2] + t * AB[2]];
+          const d = Math.sqrt(dist2(C, P));
+          if (d < bestD) { bestD = d; best = t < 0.5 ? ends[a] : ends[b]; }
+        }
+      }
+      if (best >= 0) { out[p] = best; newOwner[p] = labelOwner[best]; } // yapışan piksel o bölgeye katılır (maske ve bantlar için)
+    }
+  }
+  labels.set(out);
+  owner.set(newOwner);
 }
 
 // Otsu yöntemiyle siyah-beyaz eşiği (gri tonlu histogramda iki sınıfı en iyi ayıran değer).
@@ -388,14 +560,27 @@ export function vectorizePixels(rgba, width, height, { preset = 'logo', cutout =
   o.filterSpeckle = Math.round(o.filterSpeckle * Math.max(1, scale));
   let pixels;
   let gradients = [];
+  const softRegions = [];
   if (o.binary) pixels = toBlackAndWhite(rgba, threshold);
   else if (o.paletteColors) {
     // Pürüzsüzleştirme yarıçapı büyütme oranıyla ölçeklenir (orijinal görselde ~1 piksel).
     const smooth = o.smooth ? Math.max(1, Math.round(o.smooth * Math.max(1, scale))) : 0;
     if (o.regions) {
-      const analysis = analyzeRegions(rgba, width, height, { max: LIMITS.maxGradients, scale });
-      gradients = analysis.gradients;
-      pixels = applyRegionPalette(rgba, width, height, analysis, { maxColors: o.paletteColors, smooth });
+      // Bölgeleme büyütülmüş görselde, ölçeğe duyarlı kenar maskesiyle (gradients.js). Kenar çevresindeki
+      // pikseller (kontur ve konturun dibindeki koyu gölge) bölgeye girmez, ortak paletle boyanır: çizgi film
+      // gölgelemesindeki "kontur dibi gölgesi" böyle korunur. Denendi ve vazgeçildi: bölgelemeyi özgün
+      // çözünürlükte yapıp etiketleri büyütmek konturu inceltiyor ama bu gölgeyi siliyor (ΔE 6,8 → 10, görüntü
+      // pastel ve düz kalıyor).
+      const analysis = analyzeRegions(rgba, width, height, { max: LIMITS.maxGradients, scale, edgeRadius: o.edgeRadius });
+      const plan = buildRegionLabels(rgba, width, height, analysis, {
+        maxColors: o.paletteColors, smooth, localColors: o.localColors, localTarget: o.localTarget,
+        snapRadius: o.snapRadius ?? Math.max(1, Math.round(2 * scale)), blurRadius: o.blurRadius ?? Math.max(1, Math.round(1.5 * scale)),
+      });
+      pixels = paintLabels(rgba, plan.labels, plan, width, height);
+      // Bölge üyeliği son etiketlerden (kenara yapışan pikseller dahil): maskeler halkasız
+      const { soft, members } = extractSoftRegions(o.soft ? pixels : pixels.slice(), plan.labels, plan, width, height);
+      if (o.soft) softRegions.push(...soft);
+      gradients = analysis.gradients.map((g, gi) => ({ ...g, pixels: Uint32Array.from(members[gi]) })).filter((g) => g.pixels.length);
     } else {
       pixels = applyPalette(rgba, findPalette(rgba, { maxColors: o.paletteColors }), width, height, { smooth });
     }
@@ -406,13 +591,35 @@ export function vectorizePixels(rgba, width, height, { preset = 'logo', cutout =
     asBytes(pixels), width, height, Boolean(o.binary), Boolean(cutout), o.filterSpeckle, o.colorPrecision,
     o.layerDifference, o.cornerThreshold, o.lengthThreshold, o.spliceThreshold, 2,
   );
-  if (gradients.length) {
-    // Her gradyan bölgesi ikili maske olarak ayrıca izlenir ve düz çizimin üstüne gradyan dolgulu yol eklenir.
+  if (gradients.length || softRegions.length) {
     const defs = [], paths = [];
-    gradients.forEach((g, i) => {
-      const traced = wasm.vectorize(regionMask(g, width, height), width, height, true, false, o.filterSpeckle, 8, 16,
+    const traceMask = (region) => {
+      const traced = wasm.vectorize(regionMask(region, width, height), width, height, true, false, o.filterSpeckle, 8, 16,
         o.cornerThreshold, o.lengthThreshold, o.spliceThreshold, 2);
-      const ds = [...traced.matchAll(/<path d="([^"]+)"/g)].map((m) => m[1]);
+      return [...traced.matchAll(/<path d="([^"]+)"/g)].map((m) => m[1]);
+    };
+    // Yumuşak bölgeler: ton bantları bulanıklaştırılıp bölge şekline kırpılır (airbrush gölgesi; kenarlar keskin kalır).
+    // Bulanıklık yarıçapı büyütme oranıyla ölçeklenir (orijinalde ~1 piksel).
+    const blur = Math.round(10 * (o.softBlur ?? 1) * Math.max(1, scale)) / 10;
+    const minSoft = Math.max(1500, Math.round(width * height * 0.005)); // küçük bölgede yumuşatma göze çarpmaz, yol şişirir
+    softRegions.forEach((r, i) => {
+      if (r.pixels.length < minSoft) return;
+      const clip = traceMask(r);
+      if (!clip.length) return;
+      const bands = dilateBands(r.bands, width, height, Math.ceil(blur * 2));
+      // Bantlar bulanıklaşacağı için küçük kırıntılar görünmez: kırıntı eşiği 4 kat (yol sayısı düşer)
+      const traced = wasm.vectorize(bands, width, height, false, false, o.filterSpeckle * 4, 8, 4,
+        o.cornerThreshold, o.lengthThreshold, o.spliceThreshold, 2);
+      const bandPaths = [...traced.matchAll(/<path d="[^"]+" fill="#[0-9A-F]{6}"\/>/g)].map((m) => m[0]);
+      if (bandPaths.length < 2) return;
+      const id = i + 1;
+      defs.push(`<clipPath id="c${id}">${clip.map((d) => `<path d="${d}"/>`).join('')}</clipPath>`);
+      defs.push(`<filter id="f${id}"><feGaussianBlur stdDeviation="${blur}"/></filter>`);
+      paths.push(`<g clip-path="url(#c${id})" filter="url(#f${id})">${bandPaths.join('')}</g>`);
+    });
+    // Her gradyan bölgesi ikili maske olarak ayrıca izlenir ve düz çizimin üstüne gradyan dolgulu yol eklenir.
+    gradients.forEach((g, i) => {
+      const ds = traceMask(g);
       if (!ds.length) return;
       const id = `g${i + 1}`;
       defs.push(gradientDef(id, g.fill));
@@ -433,6 +640,7 @@ export function vectorizePixels(rgba, width, height, { preset = 'logo', cutout =
   const warnings = [];
   if (check.stats.paths > LIMITS.cuttingPaths) warnings.push(`${check.stats.paths} yol: kesim makineleri (Cricut) en fazla ${LIMITS.cuttingPaths} yol kabul eder.`);
   if (check.stats.gradients) warnings.push(`${check.stats.gradients} gradyan: kesim makineleri gradyanı yok sayar, tek renk keser.`);
+  if (check.stats.soft) warnings.push(`${check.stats.soft} yumuşak gölge katmanı (bulanıklık filtresi): kesim makineleri ve bazı eski programlar filtreyi yok sayar.`);
   return { svg, stats: check.stats, warnings };
 }
 
@@ -506,7 +714,7 @@ export function verifyExact(svg, rgba, width, height) {
 
 // ---------- Doğrulama ----------
 
-const ALLOWED_ELEMENTS = new Set(['svg', 'path', 'defs', 'linearGradient', 'radialGradient', 'stop']);
+const ALLOWED_ELEMENTS = new Set(['svg', 'path', 'defs', 'linearGradient', 'radialGradient', 'stop', 'clipPath', 'filter', 'feGaussianBlur', 'g']);
 const NUMBER = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/;
 const ARG_COUNT = { M: 2, L: 2, H: 1, V: 1, C: 6, S: 4, Q: 4, T: 2, A: 7, Z: 0 };
 
@@ -581,7 +789,7 @@ export function parsePathData(d) {
 // SVG metnini denetler. { ok, errors, stats } döner.
 export function validateSvg(svg) {
   const errors = [];
-  const stats = { paths: 0, subpaths: 0, bytes: svg.length, colors: 0, gradients: 0 };
+  const stats = { paths: 0, subpaths: 0, bytes: svg.length, colors: 0, gradients: 0, soft: 0 };
   const text = svg.replace(/<\?xml[^>]*\?>/, '').replace(/<!--[\s\S]*?-->/g, '').trim();
   if (/<!DOCTYPE|<!ENTITY/i.test(text)) errors.push('DOCTYPE/ENTITY içeremez');
   if (/data:|href=|<script|<style|<image|<foreignObject|on[a-z]+=/i.test(text)) errors.push('saf vektör değil: resim, bağlantı, betik ya da stil içeriyor');
@@ -616,6 +824,11 @@ export function validateSvg(svg) {
   const finite = (v) => /^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(v ?? '') && Number.isFinite(Number(v));
   let state = 'start'; // start → defs → paths
   let gradient = null; // { id, stops, lastOffset }
+  let clip = null; // { id, paths }
+  let filter = null; // { id, blurs }
+  let group = null; // { paths }
+  const clipIds = new Set(), filterIds = new Set();
+  const usedIds = new Set();
   const checkAttrs = (tag, allowed, what) => {
     for (const a of [...tag.matchAll(/\s([a-zA-Z:-]+)="/g)].map((m) => m[1])) if (!allowed.includes(a)) errors.push(`${what} izin verilmeyen öznitelik: ${a}`);
   };
@@ -625,7 +838,54 @@ export function validateSvg(svg) {
     if (!ALLOWED_ELEMENTS.has(name) || name === 'svg') { errors.push(`izin verilmeyen öğe: ${tag.slice(0, 40)}`); continue; }
     if (name === 'defs') {
       if (!closing) { if (state !== 'start') errors.push('<defs> yalnızca en başta ve bir kez olabilir'); state = 'defs'; }
-      else { if (state !== 'defs' || gradient) errors.push('<defs> yanlış kapatıldı'); state = 'paths'; }
+      else { if (state !== 'defs' || gradient || clip || filter) errors.push('<defs> yanlış kapatıldı'); state = 'paths'; }
+      continue;
+    }
+    if (name === 'clipPath') {
+      if (state !== 'defs' || gradient || filter) { errors.push('clipPath yalnızca <defs> içinde olabilir'); continue; }
+      if (closing) { if (!clip) errors.push('clipPath yanlış kapatıldı'); else if (!clip.paths) errors.push(`${clip.id}: boş clipPath`); clip = null; continue; }
+      if (clip) { errors.push('iç içe clipPath'); continue; }
+      const id = attr(tag, 'id');
+      checkAttrs(tag, ['id'], 'clipPath');
+      if (!/^c\d{1,4}$/.test(id ?? '')) errors.push(`geçersiz clipPath kimliği: ${id}`);
+      else if (clipIds.has(id)) errors.push(`yinelenen kimlik: ${id}`);
+      else clipIds.add(id);
+      clip = { id, paths: 0 };
+      continue;
+    }
+    if (name === 'filter') {
+      if (state !== 'defs' || gradient || clip) { errors.push('filter yalnızca <defs> içinde olabilir'); continue; }
+      if (closing) { if (!filter) errors.push('filter yanlış kapatıldı'); else if (filter.blurs !== 1) errors.push(`${filter.id}: filtre tam olarak bir feGaussianBlur içermeli`); filter = null; continue; }
+      if (filter) { errors.push('iç içe filter'); continue; }
+      const id = attr(tag, 'id');
+      checkAttrs(tag, ['id'], 'filter');
+      if (!/^f\d{1,4}$/.test(id ?? '')) errors.push(`geçersiz filter kimliği: ${id}`);
+      else if (filterIds.has(id)) errors.push(`yinelenen kimlik: ${id}`);
+      else filterIds.add(id);
+      filter = { id, blurs: 0 };
+      continue;
+    }
+    if (name === 'feGaussianBlur') {
+      if (!filter) { errors.push('feGaussianBlur yalnızca filter içinde olabilir'); continue; }
+      if (!tag.endsWith('/>')) { errors.push('feGaussianBlur kendini kapatmalı'); continue; }
+      checkAttrs(tag, ['stdDeviation'], 'feGaussianBlur');
+      const sd = attr(tag, 'stdDeviation');
+      if (!finite(sd) || !(+sd > 0) || +sd > Math.max(vw, vh) * 0.05) errors.push(`${filter.id}: geçersiz bulanıklık (${sd})`);
+      filter.blurs++;
+      continue;
+    }
+    if (name === 'g') {
+      if (state === 'defs') { errors.push('<g> defs içinde olamaz'); continue; }
+      state = 'paths';
+      if (closing) { if (!group) errors.push('<g> yanlış kapatıldı'); else if (group.paths < 1) errors.push('boş <g>'); group = null; continue; }
+      if (group) { errors.push('iç içe <g>'); continue; }
+      checkAttrs(tag, ['clip-path', 'filter'], '<g>');
+      const c = /^url\(#(c\d{1,4})\)$/.exec(attr(tag, 'clip-path') ?? '')?.[1], f = /^url\(#(f\d{1,4})\)$/.exec(attr(tag, 'filter') ?? '')?.[1];
+      if (!c || !clipIds.has(c)) errors.push('<g> geçerli bir clip-path kullanmalı');
+      if (!f || !filterIds.has(f)) errors.push('<g> geçerli bir filter kullanmalı');
+      if (c) usedIds.add(c); if (f) usedIds.add(f);
+      group = { paths: 0 };
+      stats.soft++;
       continue;
     }
     if (name === 'linearGradient' || name === 'radialGradient') {
@@ -669,19 +929,26 @@ export function validateSvg(svg) {
       continue;
     }
     // path
-    if (state === 'defs') { errors.push('<defs> kapanmadan path geldi'); continue; }
-    state = 'paths';
     if (!tag.endsWith('/>')) { errors.push('path kendini kapatmalı'); continue; }
     if (/transform=/.test(tag)) errors.push('path transform içermemeli');
-    checkAttrs(tag, ['d', 'fill', 'fill-opacity'], "path'te");
-    const op = attr(tag, 'fill-opacity');
-    if (op !== undefined && !(/^(0|1|0?\.\d+)$/.test(op) && Number(op) > 0 && Number(op) <= 1)) errors.push(`geçersiz fill-opacity: ${op}`);
     const d = attr(tag, 'd');
-    const fill = attr(tag, 'fill');
-    const ref = /^url\(#(g\d{1,4})\)$/.exec(fill ?? '');
-    if (ref) { if (!gradientIds.has(ref[1])) errors.push(`tanımsız gradyan: ${ref[1]}`); else stats.gradients++; }
-    else if (!/^#[0-9A-Fa-f]{6}$/.test(fill ?? '')) errors.push(`geçersiz renk: ${fill}`);
-    else colors.add(fill.toUpperCase());
+    if (clip) {
+      // Kırpma yolu: yalnızca d
+      checkAttrs(tag, ['d'], 'kırpma yolunda');
+      clip.paths++;
+    } else {
+      if (state === 'defs') { errors.push('<defs> kapanmadan path geldi'); continue; }
+      state = 'paths';
+      checkAttrs(tag, ['d', 'fill', 'fill-opacity'], "path'te");
+      const op = attr(tag, 'fill-opacity');
+      if (op !== undefined && !(/^(0|1|0?\.\d+)$/.test(op) && Number(op) > 0 && Number(op) <= 1)) errors.push(`geçersiz fill-opacity: ${op}`);
+      const fill = attr(tag, 'fill');
+      const ref = /^url\(#(g\d{1,4})\)$/.exec(fill ?? '');
+      if (ref) { if (!gradientIds.has(ref[1])) errors.push(`tanımsız gradyan: ${ref[1]}`); else { stats.gradients++; usedIds.add(ref[1]); } }
+      else if (!/^#[0-9A-Fa-f]{6}$/.test(fill ?? '')) errors.push(`geçersiz renk: ${fill}`);
+      else colors.add(fill.toUpperCase());
+      if (group) group.paths++;
+    }
     if (!d) { errors.push('boş yol'); continue; }
     stats.paths++;
     let subpaths;
@@ -702,9 +969,9 @@ export function validateSvg(svg) {
       }
     }
   }
-  if (state === 'defs' || gradient) errors.push('<defs> ya da gradyan kapatılmadı');
-  const unused = [...gradientIds].length - new Set([...svg.matchAll(/url\(#(g\d{1,4})\)/g)].map((m) => m[1])).size;
-  if (unused > 0) errors.push('kullanılmayan gradyan tanımı var');
+  if (state === 'defs' || gradient || clip || filter) errors.push('<defs> ya da içindeki bir tanım kapatılmadı');
+  if (group) errors.push('<g> kapatılmadı');
+  for (const id of [...gradientIds, ...clipIds, ...filterIds]) if (!usedIds.has(id)) errors.push(`kullanılmayan tanım: ${id}`);
   stats.colors = colors.size;
   return { ok: errors.length === 0, errors: [...new Set(errors)], stats };
 }

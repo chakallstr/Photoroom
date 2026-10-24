@@ -104,22 +104,40 @@ renk bantlarına bölünüyor, komşu bölgelerin tonları birbirine karışıyo
    (`gradientUnits="userSpaceOnUse"`, koordinatlar görsel içinde, duraklar 0'dan 1'e sıralı, renkler `#RRGGBB`),
    tanımsız ya da kullanılmayan gradyan yok kuralıyla denetler. Kayıpsız mod değişmedi (gradyan kullanmaz).
 
+Ek adımlar (ikinci tur):
+
+5. **Karışım yapıştırma** (`snapBlends`): kontur ile dolgu arasındaki bulanık piksel, rengi iki komşu rengin
+   arasındaysa (C ≈ A + t·(B−A)) yakın olduğu uca eşlenir; ikinci bir "gölge kontur" oluşmaz.
+6. **Bölge içi bulanıklaştırma**: ton ataması bölgeyle sınırlı bulanık renk üzerinden yapılır; bant sınırı piksel
+   gürültüsüne değil gölgenin eş-ışık eğrisine oturur.
+7. **Yumuşak gölge katmanı** (Çizim ayarı): birden çok tonlu büyük bölgenin bantları ayrı bir `<g>` içinde
+   `feGaussianBlur` ile bulanıklaştırılıp `clipPath` ile bölge şekline kırpılır; kenarlar keskin kalır, gölge
+   airbrush gibi yumuşar. Doğrulayıcı bu üçünü de sıkı kurallarla kabul eder (tek defs; clipPath yalnızca
+   d'li yollar; filter yalnızca bir feGaussianBlur; g yalnızca clip-path + filter; kullanılmayan tanım yok).
+   Kesim makineleri ve bazı eski programlar filtreyi yok sayar; çıktı uyarır.
+
+Denenip vazgeçilenler (ölçümle): bölgelemeyi özgün çözünürlükte yapıp etiketleri büyütmek konturu inceltiyor
+ama kontur dibindeki koyu gölgeyi siliyor (ejderha ΔE 6,8 → 10,0; görüntü düz ve pastel). Kenar maskesi
+yarıçapını küçültmek de kötüleştiriyor (3 → 2 piksel: ΔE 6,5 → 7,2). Dairesel "ışık lekesi" toplamıyla gölge
+uydurma (8 leke) gövdede RMS 12 → 9,8: tonlardan kötü, vazgeçildi.
+
 Ölçüm (uygulamadaki gibi `planScale` büyütmesiyle; Chromium'da geri çizilip orijinalle karşılaştırıldı):
 
 | Görsel | Ayar | Eski ΔE | Yeni ΔE | Eski yol | Yeni yol | Gradyan |
 |---|---|---|---|---|---|---|
-| Ejderha çizimi (267 px, gölgeli) | Çizim | 8,8 | **6,8** | 77 | 147 | 2 |
-| Ejderha çizimi | Logo | 11,6 | **7,3** | 41 | 68 | 2 |
-| Anime karesi | Çizim | 4,8 | **3,6** | 151 | 382 | 1 |
-| Anime karesi | Logo | 7,1 | **3,7** | 58 | 151 | 1 |
-| Panda çizimi | Çizim | 3,5 | 3,3 | 23 | 19 | 0 |
+| Ejderha çizimi (267 px, gölgeli) | Çizim | 8,8 | **7,1** | 77 | 236 | 2 |
+| Ejderha çizimi | Logo | 11,6 | **7,6** | 41 | 66 | 2 |
+| Anime karesi | Çizim | 4,8 | **3,9** | 151 | 1015 | 1 |
+| Anime karesi | Logo | 7,1 | **3,8** | 58 | 146 | 1 |
+| Panda çizimi | Logo | 3,5 | 3,1 | 18 | 17 | 0 |
 | Pikachu | Çizim | 4,3 | 4,3 | 22 | 26 | 0 |
 | Bulanık logo | Logo | 2,8 | 2,7 | 18 | 21 | 0 |
-| Temiz logo | Logo | 0,4 | 0,4 | 18 | 18 | 0 |
+| Temiz logo | Çizim / Logo | 0,4 | 0,5 | 18 | 18 | 0 |
 
-Düz logolarda sonuç aynı (bölge tonları birleştiği için fazladan yol yok); gölgeli çizimlerde renk hatası %20–50
-düştü, yol sayısı arttı (tonlar bölgeye ait olduğu için). Gölgeli çizimde çıktı hâlâ "cel-shading" (bantlı);
-bir sonraki adım bölge içi ışık/gölge lekelerini saydam dairesel gradyanlarla (`stop-opacity`) yumuşatmak.
+Düz logolarda sonuç aynı; gölgeli çizimlerde renk hatası %20–45 düştü, yol sayısı ve dosya arttı (yumuşak
+katman bantları ayrıca içerir). Gölgeli çizimde kalan fark: kontur dibindeki ±1 piksel (büyütmede ±3) kuşak
+ortak paletle boyanıyor ve orijinalden koyu/kalın görünüyor; ayrıca vektör çözünürlük eklemez, bulanık
+kaynaktaki ayrıntı (göz, diş) geri gelmez. Sonraki adım: kontur piksellerini ince çizgi olarak ayrı izlemek.
 
 Yöntem, açık kaynak iki projenin yaklaşımından esinlendi ve sıfırdan yazıldı (kod kopyalanmadı):
 [KurtVonSchaeffer/vectorize](https://github.com/KurtVonSchaeffer/vectorize) (bölge → düzlem/paraboloit uydurma,
