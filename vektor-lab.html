@@ -270,6 +270,11 @@ function applyZoom() {
   $('#orig').style.width = `${W * z}px`; $('#orig').style.height = `${H * z}px`;
   $('#svgImg').style.width = `${W * z}px`; $('#svgImg').style.height = `${H * z}px`;
   $('#svgImg').style.imageRendering = 'auto';
+  // Yakınlaştırınca görselin ortasına odaklan (köşede boş zemin görünmesin).
+  for (const v of [$('#viewA'), $('#viewB')]) {
+    v.scrollLeft = Math.max(0, (W * z - v.clientWidth) / 2);
+    v.scrollTop = Math.max(0, (H * z - v.clientHeight) / 2);
+  }
 }
 
 function bindSeg(id, key, after) {
