@@ -205,13 +205,28 @@ export function applyPalette(rgba, palette, width, height, { smooth = 0 } = {}) 
   }
   if (smooth > 0 && width && height) idx = modeFilter(idx, width, height, smooth, palette.length);
   const out = new Uint8Array(rgba.length);
+  // Renk, bölgenin İÇ piksellerinin ortalamasıdır (4 komşusu da aynı bölgede olanlar). Kenar pikselleri
+  // bulanıklıktan komşu rengi taşır; ortalamaya katılsalar düz alanların rengi kayar (ölçülen ΔE ~3 → ~1).
   const sums = palette.map(() => [0, 0, 0, 0]);
+  const all = palette.map(() => [0, 0, 0, 0]);
   for (let p = 0, i = 0; i < rgba.length; p++, i += 4) {
-    if (idx[p] === 255) continue;
-    const sm = sums[idx[p]];
+    const c = idx[p];
+    if (c === 255) continue;
+    const a = all[c];
+    a[0] += rgba[i]; a[1] += rgba[i + 1]; a[2] += rgba[i + 2]; a[3]++;
+    if (width && height) {
+      const x = p % width, y = (p - x) / width;
+      const interior = (x === 0 || idx[p - 1] === c) && (x === width - 1 || idx[p + 1] === c)
+        && (y === 0 || idx[p - width] === c) && (y === height - 1 || idx[p + width] === c);
+      if (!interior) continue;
+    }
+    const sm = sums[c];
     sm[0] += rgba[i]; sm[1] += rgba[i + 1]; sm[2] += rgba[i + 2]; sm[3]++;
   }
-  const colors = sums.map((sm) => (sm[3] ? [Math.round(sm[0] / sm[3]), Math.round(sm[1] / sm[3]), Math.round(sm[2] / sm[3])] : [0, 0, 0]));
+  const colors = palette.map((_, c) => {
+    const sm = sums[c][3] ? sums[c] : all[c]; // iç piksel yoksa (çok ince şekil) tüm pikseller
+    return sm[3] ? [Math.round(sm[0] / sm[3]), Math.round(sm[1] / sm[3]), Math.round(sm[2] / sm[3])] : [0, 0, 0];
+  });
   for (let p = 0, i = 0; i < rgba.length; p++, i += 4) {
     if (idx[p] === 255) continue; // saydam kalır (out sıfırla başlar)
     const c = colors[idx[p]];
