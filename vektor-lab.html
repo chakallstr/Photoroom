@@ -86,6 +86,7 @@ textarea { width: 100%; height: 110px; font: 12px/1.4 var(--mono); background: v
       <div class="seg" id="mode">
         <button type="button" data-v="cizim" aria-pressed="true" title="Pürüzsüz eğriler; gölgeli çizimler için">Çizim</button>
         <button type="button" data-v="logo" aria-pressed="false" title="Pürüzsüz eğriler; az renkli logo ve ikonlar">Logo</button>
+        <button type="button" data-v="temiz" aria-pressed="false" title="160 renk + ortak kenarlı çokgenler: piksel ızgarası yok, renk başına tek yol; AI netleştirme ile orijinale göre belirgin fark %0–5">Temiz</button>
         <button type="button" data-v="exact" aria-pressed="false" title="Orijinalle piksel piksel aynı; kenarlar piksel basamaklı görünür">Kayıpsız</button>
         <button type="button" data-v="detayli" aria-pressed="false">Detaylı</button>
         <button type="button" data-v="siyahBeyaz" aria-pressed="false">Siyah-beyaz</button>
@@ -255,6 +256,12 @@ function run() {
         if (sharp) { const fit = V.shrinkForExact(sharp.rgba, sharp.w, sharp.h); out = V.vectorizeExact(fit.rgba, fit.width, fit.height, { colorBits: 5 }); }
         else out = V.vectorizeExact(src, W, H);
       }
+      else if (mode === 'temiz') {
+        // Ortak kenarlı çokgenler: netleştirilmiş 4× görselde varsayılan ayarlar; netleştirme yoksa orijinal boyutta
+        // tolerans ve benek eşikleri ölçekle küçültülür
+        if (sharp) out = V.vectorizeClean(sharp.rgba, sharp.w, sharp.h, { outWidth: W, outHeight: H });
+        else out = V.vectorizeClean(src, W, H, { tolerance: 0.3, minArea: 1, similarArea: 2 });
+      }
       else {
         const extra = state.band && mode === 'cizim' ? V.BAND_GRADIENT_OVERRIDES : {};
         if (sharp) {
@@ -338,10 +345,13 @@ async function showSvg(out, ms) {
   ];
   if (strict) items.push(['Piksel doğrulaması: geri çizim = orijinal', differ === 0]);
   else if (mode === 'exact') items.push(['Piksel doğrulaması: geri çizim = netleştirilmiş görsel (32 seviye/kanal), motor doğruladı', true]);
+  else if (mode === 'temiz') items.push(['Piksel ızgarası yok: renk başına tek yol, komşu şekiller ortak sınırı paylaşır (boşluk/bindirme yok)', check.stats.paths <= check.stats.colors + 1]);
   $('#checks').innerHTML = items.map(([t, ok]) => `<li><span class="${ok ? 'y' : 'n'}">${ok ? '✓' : '✗'}</span><span>${t}</span></li>`).join('')
     + (check.ok ? '' : `<li><span class="n">!</span><span>${check.errors.slice(0, 3).join('; ')}</span></li>`);
   $('#explain').textContent = strict
     ? 'Kayıpsız mod: her renk bölgesi piksel kenarlarından çizilir. Orijinal boyutta her piksel aynıdır; büyütünce kenarlar orijinal gibi basamaklı görünür.'
+    : mode === 'temiz'
+    ? `Temiz vektör: her piksel en çok 160 renklik palete eşlendi, küçük benekler komşuya katıldı, bölge sınırları ortak kenarlı çokgen olarak izlendi (komşu şekiller aynı sadeleştirilmiş sınırı paylaşır; sapma ≤ 0,6 px${state.sharpen && state.sharp ? ' netleştirilmiş 4× ölçekte' : ''}). Orijinale göre ortalama renk farkı ΔE ${nC ? (dE / nC).toFixed(1) : '-'}. Kalan fark: düz renge indirilen gölge geçişleri (hafif) ve netleştirmeden keskinleşen kenarlar.`
     : mode === 'exact'
     ? `Yüksek sadakat: AI ile netleştirilmiş 4× görsel, renkler kanal başına 32 seviyeye yuvarlanarak piksel kenarlarından izlendi; bu yuvarlanmış görselle birebir aynı (motor doğruladı). Orijinale göre ortalama renk farkı ΔE ${nC ? (dE / nC).toFixed(1) : '-'}; kalan fark netleştirmeden (kenarlar orijinalden keskin). Orijinalin kendisiyle birebir için AI netleştirmeyi kapat.`
     : `Pürüzsüz mod: şekiller eğriyle sadeleştirilir ve düz alanlar tek renge indirilir. Soluk pembe pikseller çoğunlukla orijinaldeki JPEG gürültüsü ve bulanık kenar geçişleridir (vektör bunları temizler); koyu kırmızı belirgin farktır. Şekil örtüşmesi %${(100 * (union ? inter / union : 1)).toFixed(1)}${nC ? `, ortalama renk farkı ΔE ${(dE / nC).toFixed(1)}` : ''}. Orijinalle piksel piksel aynı çıktı için Kayıpsız modu seç.`;

@@ -1,6 +1,7 @@
 // Görselden vektöre (SVG) çevirme. VTracer (MIT) kaynaktan WASM'a derlenmiştir: tools/vtracer-wasm.
 // Tarayıcıda ve Node'da (testler) çalışır. Her çıktı kullanıcıya verilmeden önce validateSvg ile denetlenir.
 import { analyzeRegions, gradientDef, regionMask } from './gradients.js';
+import { traceShared, loopsToPath } from './sharedtrace.js';
 
 // Hazır ayarlar kullanıcı birimleriyle (derece, renk biti, piksel); iç birimlere VTracer kendisi çevirir.
 // Logo ayarı ölçümle seçildi (4 logo/ikon, renk 5–7 bit × katman 8–32 × kırıntı 4–8): ortalama ΔE 1,96.
@@ -884,6 +885,120 @@ export function vectorizeExact(rgba, width, height, { colorBits } = {}) {
   if (diff) throw new Error(`Kayıpsız vektör doğrulanamadı: ${diff}`);
   const warnings = colorBits ? [`Renkler kanal başına ${1 << colorBits} seviyeye yuvarlandı; çıktı bu yuvarlanmış görselle piksel piksel aynı.`] : [];
   return { svg, stats: check.stats, warnings };
+}
+
+// ---------- Temiz vektör (ortak kenarlı çokgenler) ----------
+// Her piksel Lab uzayında en yakın palet rengine eşlenir; minArea'dan küçük parçalar (netleştirme gürültüsü) en
+// benzer renkli komşuya katılır; bölge sınırları ortak kenarlı çokgen olarak izlenir (sharedtrace.js): komşu
+// şekiller aynı sadeleştirilmiş sınırı paylaştığından aralarında boşluk ya da bindirme olmaz. Sapma, tolerans
+// (piksel) ile sınırlıdır. Piksel ızgarası içermez; az sayıda yol (renk başına bir yol) üretir.
+
+// Küçük bağlı bileşenleri en benzer renkli komşu bileşene katar (4 komşuluk). labels yerinde değişir.
+// Katılan parça hedef bileşenin üyesi olur; hedef daha sonra başka yere katılırsa parça da onunla gider
+// (aksi halde yetim benekler kalır). minArea altı her parça katılır; similarArea altı parça yalnızca en
+// benzer komşudan ΔE < similarDelta uzaklıktaysa katılır.
+export function mergeSpecks(labels, width, height, palette, minArea, { similarArea = 0, similarDelta = 6 } = {}) {
+  const limit = Math.max(minArea, similarArea);
+  if (!(limit > 1)) return 0;
+  const n = width * height;
+  const comp = new Int32Array(n).fill(-1);
+  const members = []; // bileşen → piksel listesi (büyükler için null)
+  const stack = [];
+  for (let p = 0; p < n; p++) {
+    if (labels[p] < 0 || comp[p] >= 0) continue;
+    const id = members.length; const list = []; stack.push(p); comp[p] = id;
+    while (stack.length) {
+      const q = stack.pop(); list.push(q);
+      const x = q % width;
+      if (x > 0 && comp[q - 1] < 0 && labels[q - 1] === labels[q]) { comp[q - 1] = id; stack.push(q - 1); }
+      if (x < width - 1 && comp[q + 1] < 0 && labels[q + 1] === labels[q]) { comp[q + 1] = id; stack.push(q + 1); }
+      if (q >= width && comp[q - width] < 0 && labels[q - width] === labels[q]) { comp[q - width] = id; stack.push(q - width); }
+      if (q + width < n && comp[q + width] < 0 && labels[q + width] === labels[q]) { comp[q + width] = id; stack.push(q + width); }
+    }
+    members.push(list);
+  }
+  const order = []; for (let i = 0; i < members.length; i++) if (members[i].length < limit) order.push(i);
+  order.sort((a, b) => members[a].length - members[b].length);
+  let merged = 0;
+  for (const id of order) {
+    const list = members[id];
+    if (!list || list.length >= limit) continue; // başka bileşene katıldı ya da büyüdü
+    const own = labels[list[0]];
+    const count = new Map(); // komşu bileşen → ortak sınır uzunluğu
+    for (const q of list) {
+      const x = q % width;
+      for (const r of [x > 0 ? q - 1 : -1, x < width - 1 ? q + 1 : -1, q - width, q + width]) {
+        if (r < 0 || r >= n || labels[r] < 0) continue;
+        const c = comp[r];
+        if (c !== id) count.set(c, (count.get(c) ?? 0) + 1);
+      }
+    }
+    if (!count.size) continue;
+    let best = -1, bestScore = Infinity, bestDelta = Infinity;
+    for (const [c, len] of count) {
+      const delta = Math.sqrt(dist2(palette[own], palette[labels[members[c][0]]]));
+      const score = delta - 0.01 * len;
+      if (score < bestScore) { bestScore = score; best = c; bestDelta = delta; }
+    }
+    if (list.length >= minArea && bestDelta >= similarDelta) continue;
+    const target = members[best], lab = labels[target[0]];
+    for (const q of list) { labels[q] = lab; comp[q] = best; target.push(q); }
+    members[id] = null;
+    merged++;
+  }
+  return merged;
+}
+
+/**
+ * Temiz vektör. rgba: RGBA, width/height: boyut. Seçenekler:
+ *   colors: en fazla palet rengi (160); tolerance: sınır sadeleştirme toleransı, piksel (0,6; düşük kontrastlı sınırlarda 3 katına kadar gevşer);
+ *   minArea: bundan küçük parçalar komşuya katılır, piksel (4); similarArea/similarDelta (16, 8): bundan küçük parçalar rengi en
+ *   benzer komşudan ΔE < similarDelta uzaklıktaysa katılır (0 = kapalı); outWidth/outHeight: SVG width/height.
+ * Dönüş: { svg, stats, warnings, labels, palette }.
+ */
+export function vectorizeClean(rgba, width, height, { colors = 160, tolerance = 0.6, minArea = 4, similarArea = 16, similarDelta = 8, outWidth, outHeight } = {}) {
+  const n = width * height;
+  const palette = findPalette(rgba, { maxColors: colors, mergeDelta: 4, minShare: 0.0003 });
+  if (!palette.length) throw new Error('Görselde opak piksel yok.');
+  const labels = new Int32Array(n).fill(-1);
+  const cache = new Int32Array(1 << 18).fill(-1); // 6 bit/kanal önbellek: aynı renk için tek arama
+  for (let p = 0; p < n; p++) {
+    const i = p * 4;
+    if (rgba[i + 3] < 128) continue;
+    const key = ((rgba[i] >> 2) << 12) | ((rgba[i + 1] >> 2) << 6) | (rgba[i + 2] >> 2);
+    let best = cache[key];
+    if (best < 0) {
+      const L = srgbToLab(rgba[i], rgba[i + 1], rgba[i + 2]);
+      let bd = Infinity; best = 0;
+      for (let k = 0; k < palette.length; k++) { const d = dist2(L, palette[k]); if (d < bd) { bd = d; best = k; } }
+      cache[key] = best;
+    }
+    labels[p] = best;
+  }
+  mergeSpecks(labels, width, height, palette, minArea, { similarArea, similarDelta });
+  // Dolgu rengi: bölgenin gerçek ortalaması (palet merkezi değil)
+  const sum = new Float64Array(palette.length * 4);
+  for (let p = 0; p < n; p++) { const l = labels[p]; if (l < 0) continue; const i = p * 4; sum[l * 4] += rgba[i]; sum[l * 4 + 1] += rgba[i + 1]; sum[l * 4 + 2] += rgba[i + 2]; sum[l * 4 + 3]++; }
+  // Kontrasta duyarlı tolerans: iki yanı birbirine yakın renkli sınırlar (ΔE küçük) daha gevşek sadeleştirilir
+  // (görünür fark üretmez), keskin kontrastlı dış çizgiler sıkı tutulur.
+  const chainTolerance = (l, r) => {
+    if (l < 0 || r < 0) return tolerance;
+    const delta = Math.sqrt(dist2(palette[l], palette[r]));
+    return tolerance * Math.min(3, Math.max(1, 12 / Math.max(delta, 1)));
+  };
+  const loops = traceShared(labels, width, height, { tolerance, chainTolerance });
+  const hex = (v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0');
+  let body = '';
+  for (const [l, lp] of loops) {
+    if (!lp.length || !sum[l * 4 + 3]) continue;
+    const c = sum[l * 4 + 3];
+    body += `<path fill="#${hex(sum[l * 4] / c)}${hex(sum[l * 4 + 1] / c)}${hex(sum[l * 4 + 2] / c)}" d="${loopsToPath(lp)}"/>\n`;
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${outWidth ?? width}" height="${outHeight ?? height}">\n${body}</svg>`;
+  const check = validateSvg(svg);
+  if (!check.ok) throw new Error('Vektör çıktısı doğrulanamadı: ' + check.errors.slice(0, 3).join('; '));
+  if (check.stats.bytes > LIMITS.maxBytes) throw new Error('Temiz vektör çok büyük; daha az renk ya da daha yüksek tolerans dene.');
+  return { svg, stats: check.stats, warnings: [], labels, palette };
 }
 
 // Kayıpsız SVG'yi (yalnızca tam sayı H/V kenarlı yollar) piksel merkezlerinde, nonzero kuralıyla geri çizer ve
