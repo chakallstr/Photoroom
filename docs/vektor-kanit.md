@@ -263,8 +263,51 @@ verdi (arka plan silinmediği için ikisi aynı kaynak).
 | Bulanık logo | %0,0 | ΔE 0,00, **%0,0** | 13.431 / 1,0 MB |
 
 Yüksek sadakat değerleri ilk koşuyla birebir aynı (belirlenimci). "Birebir" türü altı görselde de sıfır fark
-(ejderhadaki 0,02 webp/png çözme farkı). Üründe artık yalnızca bu iki tür var; eğri tabanlı az parçalı çizim
-(orijinalden farklı, gölgeli çizimde belirgin fark ~%20) laboratuvarda "Çizim/Logo" olarak kaldı.
+(ejderhadaki 0,02 webp/png çözme farkı). Eski eğri tabanlı az parçalı çizim (orijinalden farklı, gölgeli çizimde
+belirgin fark ~%20) laboratuvarda "Çizim/Logo" olarak kaldı; onun yerini üründe aşağıdaki "Temiz" tür aldı.
+
+### Temiz vektör: ortak kenarlı çokgenler (piksel ızgarasız, hedefi tutan)
+
+Yüksek sadakat ve Birebir piksel kenarlı yollar üretir (büyütünce basamak görünür, dosya büyük). Eğri tabanlı eski
+"Çizim" ise %20'de kalıyordu. Kayıpsız yolları sonradan sadeleştirme denemesi (Chaikin / Douglas–Peucker) komşu
+şekiller arasında boşluk açtığı için bırakılmıştı: her şekil kendi sınırını ayrı sadeleştiriyordu. Çözüm, sınırı
+**bir kez** sadeleştirmek: `public/assets/sharedtrace.js`.
+
+1. Netleştirilmiş (4×) görselde her piksel Lab uzayında en yakın palet rengine eşlenir (k-ortalamalar, en çok 160
+   renk; dolgu rengi bölgenin gerçek ortalaması).
+2. Küçük parçalar komşuya katılır (`mergeSpecks`): 4 piksel altı her parça; 16 piksel altı parça yalnızca en benzer
+   komşudan ΔE < 8 uzaktaysa. Katılan parça hedef bileşenin üyesi olur, hedef sonra taşınırsa onunla gider (ilk
+   sürümde yetim benekler kalıyor, parça sayısı artıyordu: 27.505 → düzeltmeyle ~3.000).
+3. Bölgeler arasındaki piksel kenarı ağı, kavşaklar (≥3 bölgenin buluştuğu köşeler) arasında zincirlere bölünür;
+   her zincir **bir kez** Douglas–Peucker ile sadeleştirilir (uçlar sabit) ve her bölgenin çokgeni bu ortak
+   zincirlerden kurulur. İki komşu aynı zinciri paylaştığı için boşluk ya da bindirme olamaz; test: tamamen opak
+   rastgele haritada işaretli alanların toplamı her toleransta tam olarak w·h (`test/sharedtrace.test.js`).
+   Tolerans kontrasta duyarlı: 0,6 px taban; iki yanı birbirine yakın renkli sınırlarda (ΔE < 12) 3 katına kadar
+   gevşer (görünür fark üretmez), keskin dış çizgiler sıkı kalır. Görsel çerçevesi üzerindeki sınır sadeleştirilmez.
+4. Çıktı: renk başına tek `<path>` (M/H/V/L/Z), `validateSvg` denetiminden geçer; `crispEdges` yok.
+
+Sıfır toleransta izleyici kuantalanmış rasterle piksel piksel aynı (1068×872'de 0 farklı piksel; ilk sürümdeki
+halka kurma hatası — zincire ortasından girince halka erken kapanıyordu — bu testle bulundu).
+
+Parametre taraması (ejderha, orijinale göre belirgin fark): mod süzgeci zararlı (yarıçap 1: %12,4 → kapalı: %5,9);
+64 renk %5,3, 128 renk %2,4 (tolerans 1, benek birleştirmesiz); tolerans 0 → 2 px: %2,6 → %3,5. Benek birleştirme
+temizlik getirir ama ayrıntı siler (16 px: %5,6); seçilen denge 4/16/ΔE 8.
+
+Çevrimdışı ölçüm (netleştirilmiş kaynak → `vectorizeClean` varsayılanlarıyla → viewBox boyutunda resvg → Lanczos →
+orijinale göre CIE76):
+
+| Görsel | Belirgin fark (ΔE > 6) | Ortalama ΔE | Yol / alt yol / boyut |
+|---|---|---|---|
+| Ejderha 267×218 | **%3,0** | 2,02 | 110 / 3.109 / 267 KB |
+| Anime 640×480 | **%0,6** | 1,87 | 120 / 22.453 / 2,1 MB |
+| Panda 191×169 | **%3,3** | 2,01 | 87 / 2.040 / 155 KB |
+| Pikachu 224×224 | **%2,6** | 1,65 | 137 / 6.403 / 454 KB |
+| Temiz logo 771×200 | **%0,5** | 0,22 | 8 / 111 / 80 KB |
+| Bulanık logo 771×200 | **%0,1** | 0,60 | 90 / 6.593 / 616 KB |
+
+Karşılaştırma: aynı görsellerde eski Çizim modu %20–23, kullanıcının kendi SVG'si %35,5. Kalan farkın çoğu düz renge
+indirilen gölge geçişleri (hafif, ΔE 2,3–6 bandı %20–29) ve netleştirmeden keskinleşen kenarlar.
+
 
 ### AI netleştirme ile (waifu2x)
 

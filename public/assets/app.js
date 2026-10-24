@@ -12,7 +12,7 @@ const settings = {
   sharpen: false, // AI netleştirme (upscale-worker.js)
   keepBg: false, // arka planı silme: görsel olduğu gibi (logo/çizim bütünüyle vektöre)
   format: 'png', // png | jpg | svg
-  svgMode: 'sadakat', // sadakat | birebir
+  svgMode: 'sadakat', // sadakat | temiz | birebir
   logo: null, // HTMLImageElement
   logoPos: 'br',
   logoSize: 18, // görselin kısa kenarına göre yüzde
@@ -405,9 +405,9 @@ function outputName(item) {
 
 // ---------- Vektör (SVG) ----------
 // Motor ilk kullanımda yüklenir (vector.js + WASM). Kaynak: kesilmiş ürün (şeffaf zemin); AI netleştirme açıksa
-// netleştirilmiş 4× hali. Türler: sadakat (netleştirilmiş + 32 seviye + kayıpsız; varsayılan) ve birebir
-// (görselle piksel piksel aynı). Eğri tabanlı az parçalı çizim (orijinalden farklı) yalnızca laboratuvarda.
-// Çıktı her durumda validateSvg'den geçer (vector.js içinde).
+// netleştirilmiş 4× hali. Türler: sadakat (netleştirilmiş + 32 seviye + kayıpsız; varsayılan), temiz
+// (netleştirilmiş + 160 renk + ortak kenarlı çokgenler; piksel ızgarası yok, renk başına tek yol) ve birebir
+// (görselle piksel piksel aynı). Çıktı her durumda validateSvg'den geçer (vector.js içinde).
 let vectorMod = null;
 async function vectorEngine() {
   if (!vectorMod) {
@@ -423,9 +423,10 @@ async function vectorOf(item) {
   const base = item.cutout, W = base.width, H = base.height;
   const sharp = settings.sharpen && item.sharp ? item.sharp : null;
   if (settings.svgMode === 'birebir') return V.vectorizeExact(rgbaOf(base), W, H);
-  if (settings.svgMode === 'sadakat') {
+  if (settings.svgMode === 'sadakat' || settings.svgMode === 'temiz') {
     const s = sharp ?? await ensureSharp(item);
-    if (!s) throw new Error('"Yüksek sadakat" için AI netleştirme gerekir; bu görselde yapılamadı (1 megapikselden büyük olabilir). "Birebir" türünü dene.');
+    if (!s) throw new Error(`"${settings.svgMode === 'temiz' ? 'Temiz' : 'Yüksek sadakat'}" için AI netleştirme gerekir; bu görselde yapılamadı (1 megapikselden büyük olabilir). "Birebir" türünü dene.`);
+    if (settings.svgMode === 'temiz') return V.vectorizeClean(rgbaOf(s), s.width, s.height, { outWidth: W, outHeight: H });
     const fit = V.shrinkForExact(rgbaOf(s), s.width, s.height); // büyük görselde 2× boyut
     const r = V.vectorizeExact(fit.rgba, fit.width, fit.height, { colorBits: 5 });
     r.svg = r.svg.replace(/ width="\d+" height="\d+"/, ` width="${W}" height="${H}"`);

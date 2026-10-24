@@ -104,12 +104,14 @@ Kendin denemek için: `/vektor-lab.html`. Ölçümler ve kanıt: `docs/vektor-ka
 
 ### Editörde SVG indirme
 
-"Dosya türü → SVG" seçilince iki vektör türü var: **Yüksek sadakat** (varsayılan; AI netleştirme + kanal başına
+"Dosya türü → SVG" seçilince üç vektör türü var: **Yüksek sadakat** (varsayılan; AI netleştirme + kanal başına
 32 renk seviyesi + piksel kenarlı kayıpsız izleme; orijinale göre belirgin fark %0–2, netleştirmeyi kendiliğinden
-açar) ve **Birebir** (görselle piksel piksel aynı, 0 fark). Eğri tabanlı az parçalı çizim (orijinalden farklı)
-yalnızca `/vektor-lab.html` sayfasında (Çizim/Logo). Logo/çizimi bütünüyle çevirmek için "Arka planı silme (olduğu gibi
-kullan)" seçeneği model çalıştırmaz ve hak düşmez; bu yolla altı örnekte orijinal dosyaya göre belirgin fark
-≤ %1,4 ölçüldü (`docs/vektor-kanit.md`). SVG kesilmiş ürünü şeffaf zeminde
+açar), **Temiz** (AI netleştirme + en çok 160 renk + ortak kenarlı çokgenler, `public/assets/sharedtrace.js`:
+piksel ızgarası yok, renk başına tek yol, küçük dosya; komşu şekiller aynı sadeleştirilmiş sınırı paylaştığından
+boşluk/bindirme olmaz; orijinale göre belirgin fark %0–4) ve **Birebir** (görselle piksel piksel aynı, 0 fark).
+Eski eğri tabanlı stiller (Çizim/Logo) yalnızca `/vektor-lab.html` sayfasında. Logo/çizimi bütünüyle çevirmek için
+"Arka planı silme (olduğu gibi kullan)" seçeneği model çalıştırmaz ve hak düşmez; bu yolla altı örnekte orijinal
+dosyaya göre belirgin fark Yüksek sadakatte ≤ %1,4, Temiz'de ≤ %4 ölçüldü (`docs/vektor-kanit.md`). SVG kesilmiş ürünü şeffaf zeminde
 verir; ölçü/kenar boşluğu/gölge uygulanmaz. Zaten şeffaf zeminli PNG/WebP yüklenirse arka plan silme atlanır ve
 hak düşülmez.
 

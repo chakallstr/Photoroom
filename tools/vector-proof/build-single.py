@@ -7,6 +7,7 @@ root = pathlib.Path(__file__).resolve().parents[2]
 html = (root / 'public/vektor-lab.html').read_text()
 vector = (root / 'public/assets/vector.js').read_text()
 gradients = (root / 'public/assets/gradients.js').read_text()
+shared = (root / 'public/assets/sharedtrace.js').read_text()
 glue = (root / 'public/assets/vendor/vtracer/vtracer.js').read_text()
 wasm = base64.b64encode((root / 'public/assets/vendor/vtracer/vtracer_bg.wasm').read_bytes()).decode()
 sample = base64.b64encode((root / 'public/assets/ornek-logo.jpg').read_bytes()).decode()
@@ -16,10 +17,11 @@ assert not re.search(r'^export ', glue_inline, flags=re.M)
 glue_inline += '\nconst __glue = { vectorize, vectorize_exact, initSync, default: __wbg_init };\n'
 exported = [a or b for a, b in re.findall(r'^export (?:async )?function (\w+)|^export const (\w+)', vector, flags=re.M)]
 grad_inline = re.sub(r'^export ', '', gradients, flags=re.M)
+shared_inline = re.sub(r'^export ', '', shared, flags=re.M)
 vec_inline = re.sub(r'^export ', '', vector, flags=re.M).replace("glue ?? await import('./vendor/vtracer/vtracer.js')", 'glue')
-vec_inline = re.sub(r"^import \{[^}]*\} from './gradients.js';\s*$", '', vec_inline, flags=re.M)
+vec_inline = re.sub(r"^import \{[^}]*\} from './(gradients|sharedtrace).js';\s*$", '', vec_inline, flags=re.M)
 assert not re.search(r'^import ', vec_inline, flags=re.M)
-vec_inline = grad_inline + '\n' + vec_inline
+vec_inline = grad_inline + '\n' + shared_inline + '\n' + vec_inline
 vec_inline = re.sub(r'\bwasm\b', '__engine', vec_inline)  # yapıştırma kodundaki `wasm` ile çakışmasın
 vec_inline += '\nconst V = { ' + ', '.join(exported) + ' };\n'
 boot = f"\nconst __wasmBytes = Uint8Array.from(atob('{wasm}'), (c) => c.charCodeAt(0));\ntry {{ await V.initVectorizer(__wasmBytes, __glue); }} catch (e) {{ document.getElementById('status').textContent = 'Vektör motoru yüklenemedi: ' + e.message; throw e; }}\n"

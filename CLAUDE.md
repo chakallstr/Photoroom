@@ -12,7 +12,9 @@
   İkinci istisna: waifu2x ONNX modeli (MIT) `public/assets/vendor/waifu2x/` altında; onnxruntime-web CDN'den sabit
   sürümle yüklenir (`public/assets/upscale-worker.js`).
 - Vektör çıktısı kullanıcıya verilmeden önce `validateSvg` ile denetlenir; kayıpsız modda ayrıca `verifyExact`
-  ile piksel piksel doğrulanır. Bu denetimleri atlama.
+  ile piksel piksel doğrulanır. Bu denetimleri atlama. "Temiz" tür ortak kenarlı çokgen izleyiciyi kullanır
+  (`public/assets/sharedtrace.js`): komşu bölgeler aynı sadeleştirilmiş sınırı paylaşır; sınırı bölge başına ayrı
+  sadeleştirme (boşluk/bindirme yaratır) eklenmez.
   Ayrıntılar ve ölçümler: `docs/vektor-kanit.md`.
 - Paket ve fiyat tanımlarının tek kaynağı `server/plans.js`. Fiyat değişirse `public/index.html` ve
   `public/assets/account.js` (PRICES) de güncellenmeli.

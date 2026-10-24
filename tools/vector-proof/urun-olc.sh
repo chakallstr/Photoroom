@@ -5,7 +5,7 @@
 D=$1; ORIG=${2:-}; HERE=$(cd "$(dirname "$0")" && pwd)
 printf "%-14s | %-30s | %-30s | %s\n" "görsel" "SVG vs ürün PNG" "SVG vs orijinal" "yol / boyut"
 for svg in "$D"/*.svg; do
-  n=$(basename "${svg%.svg}"); base=${n%.birebir}; [ -f "$D/$base.png" ] || continue
+  n=$(basename "${svg%.svg}"); base=${n%.birebir}; base=${base%.temiz}; [ -f "$D/$base.png" ] || continue
   vb=$(grep -o 'viewBox="0 0 [0-9]* [0-9]*"' "$svg" | head -1 | awk '{print $3}')
   resvg -w "$vb" "$svg" "$D/$n-render.png" || { echo "$n: render HATA"; continue; }
   fit() { python3 -I -c "

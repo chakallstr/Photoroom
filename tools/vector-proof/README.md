@@ -30,7 +30,8 @@ npm start &                                   # editör http://localhost:8000
 node tools/vector-proof/urun-kanit.mjs <çıktı-klasörü> <görsel.png> [...]   # playwright gerekir
 tools/vector-proof/urun-olc.sh <çıktı-klasörü> [orijinaller-klasörü]       # resvg + Pillow gerekir
 ```
-`urun-kanit.mjs` her görseli editöre yükler, ürünün şeffaf PNG'sini (orijinal boyut) ve varsayılan SVG'sini
-(Yüksek sadakat; AI netleştirme kendiliğinden açılır) indirir. `urun-olc.sh` SVG'yi viewBox boyutunda çizip
+`urun-kanit.mjs` her görseli editöre yükler, ürünün şeffaf PNG'sini (orijinal boyut) ve üç SVG türünü indirir:
+`<ad>.svg` (Yüksek sadakat; AI netleştirme kendiliğinden açılır), `<ad>.temiz.svg` (ortak kenarlı çokgenler) ve
+`<ad>.birebir.svg`. `KEEP_BG=1` ile "Arka planı silme" seçilir (orijinal dosyayla karşılaştırma için). `urun-olc.sh` SVG'yi viewBox boyutunda çizip
 Lanczos ile küçültür ve hem ürün PNG'siyle hem (verilirse) orijinalle CIE76 ΔE üzerinden karşılaştırır; "belirgin
 fark" ΔE > 6 olan piksel payıdır. Sonuçlar: `docs/vektor-kanit.md`.
