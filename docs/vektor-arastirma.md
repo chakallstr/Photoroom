@@ -1,5 +1,8 @@
 # Görselden vektöre (SVG) çevirme: araştırma
 
+> **Güncel durum:** Motor kaynaktan derlendi ve doğrulama düzeneği kuruldu. Ölçümler, bulunan hatalar ve güncel
+> hazır ayarlar için `docs/vektor-kanit.md` belgesine bak (aşağıdaki ayar tablosu ilk denemelere aittir).
+
 Tarih: 24 Ekim 2026. Amaç: Photoroot'a otomatik raster → vektör çevirme eklemek.
 
 ## Sonuç

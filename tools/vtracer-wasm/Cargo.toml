@@ -1,0 +1,22 @@
+# Photoroot için VTracer'ın tarayıcı (WASM) derlemesi.
+# Resmi kaynaktan (crates.io: vtracer, MIT OR Apache-2.0) derlenir; derleme: ./build.sh
+[package]
+name = "photoroot-vtracer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+vtracer = { version = "=0.6.5", default-features = false, features = ["wasm"] }
+visioncortex = "=0.8.10"
+wasm-bindgen = "=0.2.100"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"

@@ -13,3 +13,11 @@ jobs:
         with:
           node-version: 22
       - run: npm test
+  vtracer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: VTracer köprüsü testleri (2.000 rastgele görselle dayanıklılık dahil)
+        run: cargo test --release
+        working-directory: tools/vtracer-wasm

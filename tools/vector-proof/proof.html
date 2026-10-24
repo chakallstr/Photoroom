@@ -1,0 +1,45 @@
+<!doctype html><meta charset="utf-8"><body><script type="module">
+import { initVectorizer, vectorizePixels, validateSvg, planScale } from '../../public/assets/vector.js';
+await initVectorizer();
+const load = (src) => new Promise((r, e) => { const i = new Image(); i.onload = () => r(i); i.onerror = e; i.src = src; });
+const pixelsOf = (img, w, h) => { const c = new OffscreenCanvas(w, h); const x = c.getContext('2d'); x.drawImage(img, 0, 0, w, h); return x.getImageData(0, 0, w, h).data; };
+// sRGB → CIELAB (D65)
+function lab(r, g, b) {
+  const f = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  const R = f(r), G = f(g), B = f(b);
+  let X = (R * 0.4124 + G * 0.3576 + B * 0.1805) / 0.95047, Y = R * 0.2126 + G * 0.7152 + B * 0.0722, Z = (R * 0.0193 + G * 0.1192 + B * 0.9505) / 1.08883;
+  const t = (v) => (v > 0.008856 ? Math.cbrt(v) : 7.787 * v + 16 / 116);
+  X = t(X); Y = t(Y); Z = t(Z);
+  return [116 * Y - 16, 500 * (X - Y), 200 * (Y - Z)];
+}
+window.run = async (name, preset, cutout, overrides = {}) => {
+  const img = await load(`images/${name}.png`);
+  const W = img.naturalWidth, H = img.naturalHeight;
+  // Kısa kenar 600 px'ten küçükse büyüterek çevir (ince çizgiler korunsun).
+  const plan = planScale(W, H); const k = plan.scale;
+  const t0 = performance.now();
+  const { svg, stats, warnings } = vectorizePixels(pixelsOf(img, plan.width, plan.height), plan.width, plan.height, { preset, cutout, outWidth: W, outHeight: H, scale: k, ...overrides });
+  const ms = performance.now() - t0;
+  // Vektörü orijinal boyutta çiz ve orijinalle karşılaştır.
+  const vimg = await load('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg));
+  const a = pixelsOf(img, W, H), b = pixelsOf(vimg, W, H);
+  let inter = 0, union = 0, dE = 0, nC = 0;
+  if (preset === 'siyahBeyaz') {
+    // Siyah-beyaz: beyaz zemin çizilmez; ölçüt koyu alanların örtüşmesi (her ikisi beyaz üstünde).
+    const lum = (d, i) => { const al = d[i + 3] / 255; return (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) * al + 255 * (1 - al); };
+    for (let i = 0; i < a.length; i += 4) { const da = lum(a, i) < 128, db = lum(b, i) < 128; if (da || db) union++; if (da && db) inter++; }
+    return { name, preset, cutout, W, H, k: +k.toFixed(2), ms: Math.round(ms), svg, stats, warnings, valid: validateSvg(svg), iou: union ? inter / union : 1, dE: 0 };
+  }
+  for (let i = 0; i < a.length; i += 4) {
+    const ia = a[i + 3] > 127, ib = b[i + 3] > 127;
+    if (ia || ib) union++;
+    if (ia && ib) {
+      inter++;
+      const p = lab(a[i], a[i + 1], a[i + 2]), q = lab(b[i], b[i + 1], b[i + 2]);
+      dE += Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]); nC++;
+    }
+  }
+  return { name, preset, cutout, W, H, k: +k.toFixed(2), ms: Math.round(ms), svg, stats, warnings, valid: validateSvg(svg), iou: union ? inter / union : 1, dE: nC ? dE / nC : 0 };
+};
+window.ready = true;
+</script>
