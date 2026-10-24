@@ -18,6 +18,9 @@ export const PRESETS = {
 };
 
 // Çıktı sınırları: Cricut Design Space en fazla 5000 yol kabul eder; çok büyük dosyalar tarayıcıyı yorar.
+// Deneysel: bant başına gradyan (fills 'fit'). Netleştirilmiş gölgeli çizimde ΔE 6,5 → 5,3; düz çizim ve
+// logolarda yol sayısını artırıp hatayı yükseltiyor, o yüzden varsayılan değil. Laboratuvarda seçenek.
+export const BAND_GRADIENT_OVERRIDES = { fills: 'fit', localColors: 8, celStep: 8, filterSpeckle: 1 };
 export const LIMITS = { cuttingPaths: 5000, maxPaths: 60000, maxBytes: 15_000_000, maxPixels: 4_000_000, maxGradients: 24 };
 
 // Çevirme ölçeği: kısa kenarı 600 px'ten küçük görseller (ince çizgiler korunsun diye) 4 kata kadar büyütülür,
@@ -295,6 +298,85 @@ export function celTones(rgba, soft, pixels, { maxTones = 4, minRange = 12, step
   return { labs, thresholds, bandMap };
 }
 
+// ---------- Bant başına dolgu uydurma ("fit" modu) ----------
+// Etiket → eşsiz sahte renk (VTracer tek geçişte her etiketi ayrı katman yapsın; kanal başına ≥ 8 adım aralık).
+export function encodeLabel(l) { return [((l & 31) << 3) + 4, (((l >> 5) & 31) << 3) + 4, (((l >> 10) & 31) << 3) + 4]; }
+export function decodeLabel(hex) {
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  return (r >> 3) | ((g >> 3) << 5) | ((b >> 3) << 10);
+}
+
+// Her etiketin pikselleri için renk modeli: düz (ortalama) ya da doğrusal gradyan (renk ≈ a + b·x + c·y, kanal
+// başına). İnce eş-ışık bandında gölge neredeyse doğrusaldır; bant bant gradyan, parça parça sürekli gölge verir.
+// Dönüş: etiket → { kind:'flat', color:[r,g,b] } | { kind:'linear', x1,y1,x2,y2, stops }.
+export function fitLabelFills(rgba, labels, labelCount, width, height, { minPixels = 60, minGain = 0.2, minRms = 3 } = {}) {
+  const K = labelCount;
+  const n = new Float64Array(K), Sx = new Float64Array(K), Sy = new Float64Array(K), Sxx = new Float64Array(K), Syy = new Float64Array(K), Sxy = new Float64Array(K);
+  const Sc = new Float64Array(K * 3), Scx = new Float64Array(K * 3), Scy = new Float64Array(K * 3), Scc = new Float64Array(K * 3);
+  for (let p = 0; p < labels.length; p++) {
+    const l = labels[p]; if (l < 0) continue;
+    const x = (p % width) + 0.5, y = Math.floor(p / width) + 0.5, i = p * 4;
+    n[l]++; Sx[l] += x; Sy[l] += y; Sxx[l] += x * x; Syy[l] += y * y; Sxy[l] += x * y;
+    for (let k = 0; k < 3; k++) { const v = rgba[i + k]; Sc[l * 3 + k] += v; Scx[l * 3 + k] += v * x; Scy[l * 3 + k] += v * y; Scc[l * 3 + k] += v * v; }
+  }
+  const solve3 = (A, b) => {
+    const m = A.map((r, i) => [...r, b[i]]);
+    for (let c = 0; c < 3; c++) {
+      let piv = c; for (let r = c + 1; r < 3; r++) if (Math.abs(m[r][c]) > Math.abs(m[piv][c])) piv = r;
+      [m[c], m[piv]] = [m[piv], m[c]]; if (Math.abs(m[c][c]) < 1e-9) return null;
+      for (let r = 0; r < 3; r++) { if (r === c) continue; const f = m[r][c] / m[c][c]; for (let j = c; j < 4; j++) m[r][j] -= f * m[c][j]; }
+    }
+    return m.map((r, i) => r[3] / r[i]);
+  };
+  const fills = new Array(K).fill(null);
+  const coefs = new Array(K).fill(null);
+  for (let l = 0; l < K; l++) {
+    if (!n[l]) continue;
+    const mean = [0, 1, 2].map((k) => Sc[l * 3 + k] / n[l]);
+    fills[l] = { kind: 'flat', color: mean.map((v) => Math.round(Math.min(255, Math.max(0, v)))) };
+    if (n[l] < minPixels) continue;
+    const A = [[n[l], Sx[l], Sy[l]], [Sx[l], Sxx[l], Sxy[l]], [Sy[l], Sxy[l], Syy[l]]];
+    const cs = []; let flatSse = 0, planeSse = 0;
+    for (let k = 0; k < 3; k++) {
+      const s = solve3(A, [Sc[l * 3 + k], Scx[l * 3 + k], Scy[l * 3 + k]]); if (!s) { cs.length = 0; break; }
+      cs.push(s);
+      // SSE kapalı biçim: Σ(v − (a+bx+cy))² = Σv² − 2Σv·pred + Σpred²; Σpred² = aΣv... normal denklemlerde Σ pred·v = Σ pred²
+      const predDotV = s[0] * Sc[l * 3 + k] + s[1] * Scx[l * 3 + k] + s[2] * Scy[l * 3 + k];
+      planeSse += Scc[l * 3 + k] - predDotV;
+      flatSse += Scc[l * 3 + k] - Sc[l * 3 + k] * Sc[l * 3 + k] / n[l];
+    }
+    if (cs.length !== 3) continue;
+    const flatRms = Math.sqrt(Math.max(0, flatSse) / (n[l] * 3)), planeRms = Math.sqrt(Math.max(0, planeSse) / (n[l] * 3));
+    if (flatRms < minRms || (flatRms - planeRms) / flatRms < minGain) continue;
+    coefs[l] = cs;
+  }
+  // Gradyan yönü ve uçları: parlaklık eğimi yönünde piksel izdüşümlerinin sınırları (ikinci geçiş)
+  const tmin = new Float64Array(K).fill(Infinity), tmax = new Float64Array(K).fill(-Infinity), ux = new Float64Array(K), uy = new Float64Array(K);
+  for (let l = 0; l < K; l++) {
+    if (!coefs[l]) continue;
+    const gx = 0.299 * coefs[l][0][1] + 0.587 * coefs[l][1][1] + 0.114 * coefs[l][2][1];
+    const gy = 0.299 * coefs[l][0][2] + 0.587 * coefs[l][1][2] + 0.114 * coefs[l][2][2];
+    const L = Math.hypot(gx, gy); if (L < 1e-6) { coefs[l] = null; continue; }
+    ux[l] = gx / L; uy[l] = gy / L;
+  }
+  for (let p = 0; p < labels.length; p++) {
+    const l = labels[p]; if (l < 0 || !coefs[l]) continue;
+    const t = ((p % width) + 0.5) * ux[l] + (Math.floor(p / width) + 0.5) * uy[l];
+    if (t < tmin[l]) tmin[l] = t; if (t > tmax[l]) tmax[l] = t;
+  }
+  for (let l = 0; l < K; l++) {
+    if (!coefs[l]) continue;
+    const cx = Sx[l] / n[l], cy = Sy[l] / n[l], c0 = cx * ux[l] + cy * uy[l];
+    // Uç noktalar görsel içinde kalsın (eğri/uzun bantta ağırlık merkezinden geçen doğru dışarı taşabilir)
+    const pt = (t) => [Math.min(width, Math.max(0, cx + (t - c0) * ux[l])), Math.min(height, Math.max(0, cy + (t - c0) * uy[l]))];
+    const [x1, y1] = pt(tmin[l]), [x2, y2] = pt(tmax[l]);
+    if (Math.hypot(x2 - x1, y2 - y1) < 1) continue;
+    const colorAt = (x, y) => coefs[l].map((s) => Math.round(Math.min(255, Math.max(0, s[0] + s[1] * x + s[2] * y))));
+    fills[l] = { kind: 'linear', x1, y1, x2, y2, stops: [{ offset: 0, color: colorAt(x1, y1) }, { offset: 1, color: colorAt(x2, y2) }] };
+  }
+  return fills;
+}
+
 // Bölgeye duyarlı palet. Görsel önce renk-sürekli bölgelere ayrılır (gradients.js). Gradyana sığan bölge tek
 // renge (ortalama) boyanır; üstüne sonradan gradyanlı yol çizilir. Sığmayan büyük bölge kendi içinde en fazla
 // `localColors` tona ayrılır (çizgi film gölgelemesi: ana ton + gölge + ışık). Bölge dışı pikseller (kontur,
@@ -302,7 +384,7 @@ export function celTones(rgba, soft, pixels, { maxTones = 4, minRange = 12, step
 // Tek paletle (16 renk) tüm görseli boyamaya göre tonlar bölgelere ait kalır, komşu bölgelerin tonları karışmaz.
 //
 // Sonuç bir "etiket planı": her piksel için etiket (Int32, -1 saydam), etiket → palet rengi, etiket → bölge.
-export function buildRegionLabels(rgba, width, height, { gradients, flats }, { maxColors = 16, smooth = 0, localColors = 4, localMerge = 6, localTarget = 4, mergeDelta = 5, snapRadius = 0, blurRadius = 0, tones = 'kmeans' } = {}) {
+export function buildRegionLabels(rgba, width, height, { gradients, flats }, { maxColors = 16, smooth = 0, localColors = 4, localMerge = 6, localTarget = 4, mergeDelta = 5, snapRadius = 0, blurRadius = 0, tones = 'kmeans', celStep = 15 } = {}) {
   const n = width * height;
   const owner = new Int32Array(n).fill(-1); // piksel → bölge sırası (gradients sonra flats)
   const regions = [...gradients.map((g) => ({ pixels: g.pixels, gradient: true })), ...flats.map((f) => ({ pixels: f.pixels, gradient: false }))];
@@ -323,7 +405,7 @@ export function buildRegionLabels(rgba, width, height, { gradients, flats }, { m
       for (const p of r.pixels) { m[0] += rgba[p * 4]; m[1] += rgba[p * 4 + 1]; m[2] += rgba[p * 4 + 2]; }
       return [srgbToLab(m[0] / r.pixels.length, m[1] / r.pixels.length, m[2] / r.pixels.length)];
     }
-    if (tones === 'cel') { const c = celTones(rgba, softSrc, r.pixels, { maxTones: localColors }); cel[ri] = c; return c.labs; }
+    if (tones === 'cel') { const c = celTones(rgba, softSrc, r.pixels, { maxTones: localColors, step: celStep }); cel[ri] = c; return c.labs; }
     return regionTones(rgba, r.pixels, { maxColors: localColors, mergeDelta: localMerge, target: localTarget });
   });
   // Etiketler: ortak renkler + her bölgenin tonları. Birbirine çok yakın tonlar (ΔE < mergeDelta) aynı palet
@@ -595,6 +677,7 @@ export function vectorizePixels(rgba, width, height, { preset = 'logo', cutout =
   o.filterSpeckle = Math.round(o.filterSpeckle * Math.max(1, scale));
   let pixels;
   let gradients = [];
+  let labelFills = null; // fills === 'fit': etiket → dolgu modeli
   const softRegions = [];
   if (o.binary) pixels = toBlackAndWhite(rgba, threshold);
   else if (o.paletteColors) {
@@ -610,15 +693,28 @@ export function vectorizePixels(rgba, width, height, { preset = 'logo', cutout =
       // Küçük ama anlamlı alanlar (göz akı, diş) da bölge olsun: eşik görselin %0,05'i (en az 100 piksel)
       const analysis = analyzeRegions(rgba, width, height, { max: LIMITS.maxGradients, scale, edgeRadius: o.edgeRadius, minArea: Math.max(100, Math.round(width * height * (o.minAreaShare ?? 0.0005))) });
       const plan = buildRegionLabels(rgba, width, height, analysis, {
-        maxColors: o.paletteColors, smooth, localColors: o.localColors, localTarget: o.localTarget, tones: o.tones ?? 'kmeans',
+        maxColors: o.paletteColors, smooth, localColors: o.localColors, localTarget: o.localTarget, tones: o.tones ?? 'kmeans', celStep: o.celStep,
         // Yapıştırma yalnızca kenar rampası genişliğinde (≈ ölçek); daha genişi göz gibi küçük ayrıntıları eritir
         snapRadius: o.snapRadius ?? Math.max(1, Math.round(scale)), blurRadius: o.blurRadius ?? Math.max(1, Math.round((o.tones === 'cel' ? 3 : 1.5) * scale)),
       });
-      pixels = paintLabels(rgba, plan.labels, plan, width, height);
-      // Bölge üyeliği son etiketlerden (kenara yapışan pikseller dahil): maskeler halkasız
-      const { soft, members } = extractSoftRegions(o.soft ? pixels : pixels.slice(), plan.labels, plan, width, height);
-      if (o.soft) softRegions.push(...soft);
-      gradients = analysis.gradients.map((g, gi) => ({ ...g, pixels: Uint32Array.from(members[gi]) })).filter((g) => g.pixels.length);
+      if (o.fills === 'fit') {
+        // Her etiket (bölge bandı, kontur, ortak renk) VTracer'a eşsiz sahte renkle verilir; yollar etikete geri
+        // çözülüp dolgusu etiketin kendi modeliyle (düz ya da doğrusal gradyan) değiştirilir. Gradyan bölgeleri
+        // (dairesel/doğrusal) kendi uydurmasını korur.
+        labelFills = fitLabelFills(rgba, plan.labels, plan.labelColor.length, width, height);
+        analysis.gradients.forEach((g, gi) => { const l = plan.labels[g.pixels[0]]; if (l >= 0 && plan.labelOwner[l] === gi) labelFills[l] = { kind: g.fill.kind, ...g.fill }; });
+        pixels = new Uint8Array(rgba.length);
+        for (let p = 0; p < plan.labels.length; p++) {
+          const l = plan.labels[p]; if (l < 0) continue;
+          const c = encodeLabel(l), i = p * 4; pixels[i] = c[0]; pixels[i + 1] = c[1]; pixels[i + 2] = c[2]; pixels[i + 3] = 255;
+        }
+      } else {
+        pixels = paintLabels(rgba, plan.labels, plan, width, height);
+        // Bölge üyeliği son etiketlerden (kenara yapışan pikseller dahil): maskeler halkasız
+        const { soft, members } = extractSoftRegions(o.soft ? pixels : pixels.slice(), plan.labels, plan, width, height);
+        if (o.soft) softRegions.push(...soft);
+        gradients = analysis.gradients.map((g, gi) => ({ ...g, pixels: Uint32Array.from(members[gi]) })).filter((g) => g.pixels.length);
+      }
     } else {
       pixels = applyPalette(rgba, findPalette(rgba, { maxColors: o.paletteColors }), width, height, { smooth });
     }
@@ -626,9 +722,32 @@ export function vectorizePixels(rgba, width, height, { preset = 'logo', cutout =
   else pixels = rgba;
   const asBytes = (a) => (a instanceof Uint8Array ? a : new Uint8Array(a.buffer, a.byteOffset, a.byteLength));
   let svg = wasm.vectorize(
-    asBytes(pixels), width, height, Boolean(o.binary), Boolean(cutout), o.filterSpeckle, o.colorPrecision,
-    o.layerDifference, o.cornerThreshold, o.lengthThreshold, o.spliceThreshold, 2,
+    asBytes(pixels), width, height, Boolean(o.binary), Boolean(cutout), o.filterSpeckle, labelFills ? 8 : o.colorPrecision,
+    labelFills ? 0 : o.layerDifference, o.cornerThreshold, o.lengthThreshold, o.spliceThreshold, 2,
   );
+  if (labelFills) {
+    // Sahte renkleri etiket dolgularına çevir
+    const defs = []; const defId = new Map();
+    // VTracer kırıntı birleştirirken renkleri ortalar; sahte renk tam eşleşmezse en yakın gerçek etikete çözülür
+    const encoded = labelFills.map((f, l) => (f ? encodeLabel(l) : null));
+    const nearestLabel = (hex) => {
+      const exact = decodeLabel(hex);
+      if (labelFills[exact] && encoded[exact] && hex === '#' + encoded[exact].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase()) return exact;
+      const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+      let best = -1, bd = Infinity;
+      encoded.forEach((c, l) => { if (!c) return; const dd = (c[0] - r) ** 2 + (c[1] - g) ** 2 + (c[2] - b) ** 2; if (dd < bd) { bd = dd; best = l; } });
+      return best;
+    };
+    svg = svg.replace(/<path d="([^"]+)" fill="(#[0-9A-F]{6})"\/>/g, (m, d, hex) => {
+      const l = nearestLabel(hex); const f = l >= 0 ? labelFills[l] : null;
+      if (!f) return `<path d="${d}" fill="${hex}"/>`;
+      if (f.kind === 'flat') return `<path d="${d}" fill="${'#' + f.color.map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase()}"/>`;
+      let id = defId.get(l);
+      if (!id) { id = `g${defId.size + 1}`; defId.set(l, id); defs.push(gradientDef(id, f)); }
+      return `<path d="${d}" fill="url(#${id})"/>`;
+    });
+    if (defs.length) svg = svg.replace(/(<svg\b[^>]*>)/, `$1\n<defs>${defs.join('')}</defs>`);
+  }
   if (gradients.length || softRegions.length) {
     const defs = [], paths = [];
     const traceMask = (region) => {
