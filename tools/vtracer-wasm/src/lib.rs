@@ -102,7 +102,7 @@ pub fn write_svg(svg: &SvgFile, precision: u32, shift: i32) -> String {
                 CompoundPathElement::Spline(e) => e.to_svg_string(true, &PointF64::new(0.0, -shift as f64), Some(precision)),
             });
         }
-        let d = d.trim();
+        let d = clamp_path(d.trim(), svg.width as f64, svg.height as f64, precision);
         if d.is_empty() {
             continue;
         }
@@ -110,6 +110,40 @@ pub fn write_svg(svg: &SvgFile, precision: u32, shift: i32) -> String {
     }
     out.push_str("\n</svg>\n");
     out
+}
+
+/// Yoldaki tüm noktaları (eğri kontrol noktaları dahil) görsel sınırına sabitler. VTracer yalnızca mutlak
+/// M/L/C/Q komutları ve x,y çiftleri üretir. Bézier eğrisi kontrol noktalarının dışbükey zarfı içinde kaldığı
+/// için noktalar sınır içindeyse eğri de sınır içindedir: hiçbir şekil görselin dışına taşmaz.
+pub fn clamp_path(d: &str, w: f64, h: f64, precision: u32) -> String {
+    let mut out = String::with_capacity(d.len());
+    let mut is_x = true;
+    let mut num = String::new();
+    let flush = |num: &mut String, out: &mut String, is_x: &mut bool| {
+        if num.is_empty() { return; }
+        let v: f64 = num.parse().unwrap_or(0.0);
+        let c = if *is_x { v.clamp(0.0, w) } else { v.clamp(0.0, h) };
+        let p = 10f64.powi(precision as i32);
+        let r = (c * p).round() / p + 0.0; // + 0.0: eksi sıfırı (-0) sıfıra çevirir
+        if !out.is_empty() && !out.ends_with(|ch: char| ch.is_ascii_alphabetic()) { out.push(' '); }
+        let _ = write!(out, "{}", r);
+        *is_x = !*is_x;
+        num.clear();
+    };
+    for ch in d.chars() {
+        if ch.is_ascii_digit() || ch == '.' || (ch == '-' && num.is_empty()) || ch == 'e' {
+            num.push(ch);
+        } else {
+            flush(&mut num, &mut out, &mut is_x);
+            if ch.is_ascii_alphabetic() {
+                if !out.is_empty() && !out.ends_with(' ') { out.push(' '); }
+                out.push(ch);
+                if ch == 'Z' || ch == 'z' { out.push(' '); }
+            }
+        }
+    }
+    flush(&mut num, &mut out, &mut is_x);
+    out.trim().to_string()
 }
 
 #[wasm_bindgen]
@@ -242,6 +276,10 @@ mod tests {
                 Err(_) => failures.push(format!("#{case}: {w}x{h} tür={kind} ÇÖKTÜ")),
                 Ok(Ok(svg)) => {
                     if svg.contains("NaN") || svg.contains("inf") { failures.push(format!("#{case}: geçersiz sayı")); }
+                    if svg.contains("d=\"M-") || svg.contains(" -") {
+                        let i = svg.find(" -").or(svg.find("d=\"M-")).unwrap();
+                        failures.push(format!("#{case}: negatif (sınır dışı) koordinat: …{}…", &svg[i..(i + 80).min(svg.len())]));
+                    }
                     if !svg.contains("viewBox") || svg.contains("transform") { failures.push(format!("#{case}: biçim")); }
                 }
                 Ok(Err(_)) => {} // anlaşılır hata dönmesi kabul edilir
@@ -325,6 +363,13 @@ mod tests {
         let red = colors.iter().find(|c| c.rgba == [255, 0, 0, 255]).unwrap();
         assert_eq!(red.loops.len(), 2);
         assert_eq!(exact::rasterize(5, 5, &colors), px);
+    }
+
+    #[test]
+    fn yol_noktalari_sinira_sabitlenir() {
+        assert_eq!(clamp_path("M-1.9 14.2 C120.5 3 5 -2 10 10 Z", 100.0, 50.0, 2), "M0 14.2 C100 3 5 0 10 10 Z");
+        assert_eq!(clamp_path("M1 2 L3 4 Z M5 6 L7 8 Z", 10.0, 10.0, 2), "M1 2 L3 4 Z M5 6 L7 8 Z");
+        assert_eq!(clamp_path("M-0.001 3 L-0 4 Z", 10.0, 10.0, 2), "M0 3 L0 4 Z");
     }
 
     #[test]

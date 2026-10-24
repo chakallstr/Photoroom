@@ -6,9 +6,11 @@
 // Eski ayar (renk 4 bit, katman 48) renkleri fazla birleştiriyordu (bulanık logoda ΔE 22).
 // paletteColors: çevirmeden önce baskın renk sayısı üst sınırı (geçiş tonları ayrıca temizlenir).
 // Ölçüm: logolarda gerçek renk sayısına iner (test logoları 3 renk, 18 yol); bulanık kenar halkaları kaybolur.
+// smooth: çoğunluk filtresi yarıçapı (orijinal görsel pikseli). Eğri ayarları 8 kat büyütmede göz kontrolüyle
+// seçildi: köşe eşiği 90 dik çizgileri en düz tutuyor (30'da harf gövdeleri dalgalı eğriye dönüşüyor).
 export const PRESETS = {
-  logo: { binary: false, paletteColors: 8, colorPrecision: 7, filterSpeckle: 8, layerDifference: 8, cornerThreshold: 60, lengthThreshold: 6, spliceThreshold: 45 },
-  cizim: { binary: false, paletteColors: 16, colorPrecision: 7, filterSpeckle: 4, layerDifference: 8, cornerThreshold: 45, lengthThreshold: 3.5, spliceThreshold: 45 },
+  logo: { binary: false, paletteColors: 8, smooth: 0.67, colorPrecision: 7, filterSpeckle: 8, layerDifference: 8, cornerThreshold: 90, lengthThreshold: 10, spliceThreshold: 60 },
+  cizim: { binary: false, paletteColors: 16, smooth: 0.67, colorPrecision: 7, filterSpeckle: 4, layerDifference: 8, cornerThreshold: 90, lengthThreshold: 10, spliceThreshold: 60 },
   // Çok renkli, gölgeli çizimler için paletsiz: renk doğruluğu en yüksek, dosya daha büyük.
   detayli: { binary: false, colorPrecision: 6, filterSpeckle: 2, layerDifference: 24, cornerThreshold: 45, lengthThreshold: 3.5, spliceThreshold: 45 },
   siyahBeyaz: { binary: true, colorPrecision: 8, filterSpeckle: 6, layerDifference: 16, cornerThreshold: 60, lengthThreshold: 4, spliceThreshold: 45 },
@@ -158,9 +160,39 @@ export function findTransitionColors(idx, width, height, palette, { maxDelta = 1
   return out;
 }
 
+// Çoğunluk filtresi: her opak piksel, (2r+1)² penceresinde en sık görülen palet rengini alır.
+// JPEG gürültüsünden doğan kenar dalgalarını ve basamakları siler; büyük bölgeler ve köşeler korunur.
+// Saydam pikseller (255) oy vermez ve değişmez.
+export function modeFilter(idx, width, height, radius, colors) {
+  if (radius < 1) return idx;
+  const out = idx.slice();
+  const counts = new Int32Array(colors);
+  for (let y = 0; y < height; y++) {
+    const y0 = Math.max(0, y - radius), y1 = Math.min(height - 1, y + radius);
+    for (let x = 0; x < width; x++) {
+      const c = idx[y * width + x];
+      if (c === 255) continue;
+      const x0 = Math.max(0, x - radius), x1 = Math.min(width - 1, x + radius);
+      counts.fill(0);
+      let best = c, bestN = 0;
+      for (let yy = y0; yy <= y1; yy++) {
+        const row = yy * width;
+        for (let xx = x0; xx <= x1; xx++) {
+          const v = idx[row + xx];
+          if (v === 255) continue;
+          const n = ++counts[v];
+          if (n > bestN || (n === bestN && v === c)) { bestN = n; best = v; }
+        }
+      }
+      out[y * width + x] = best;
+    }
+  }
+  return out;
+}
+
 // Her opak pikseli paletteki en yakın renge eşler; geçiş tonları (width/height verilirse) çıkarılır.
 // Renk, o renge eşlenen piksellerin ortalamasıdır (Lab'den geri çevirmek yerine gerçek piksel ortalaması).
-export function applyPalette(rgba, palette, width, height) {
+export function applyPalette(rgba, palette, width, height, { smooth = 0 } = {}) {
   if (!palette.length) return rgba;
   let idx = mapToPalette(rgba, palette);
   if (width && height && palette.length > 2) {
@@ -170,6 +202,7 @@ export function applyPalette(rgba, palette, width, height) {
       idx = mapToPalette(rgba, palette);
     }
   }
+  if (smooth > 0 && width && height) idx = modeFilter(idx, width, height, smooth, palette.length);
   const out = new Uint8Array(rgba.length);
   const sums = palette.map(() => [0, 0, 0, 0]);
   for (let p = 0, i = 0; i < rgba.length; p++, i += 4) {
@@ -235,7 +268,11 @@ export function vectorizePixels(rgba, width, height, { preset = 'logo', cutout =
   o.filterSpeckle = Math.round(o.filterSpeckle * Math.max(1, scale));
   let pixels;
   if (o.binary) pixels = toBlackAndWhite(rgba, threshold);
-  else if (o.paletteColors) pixels = applyPalette(rgba, findPalette(rgba, { maxColors: o.paletteColors }), width, height);
+  else if (o.paletteColors) {
+    // Pürüzsüzleştirme yarıçapı büyütme oranıyla ölçeklenir (orijinal görselde ~1 piksel).
+    const smooth = o.smooth ? Math.max(1, Math.round(o.smooth * Math.max(1, scale))) : 0;
+    pixels = applyPalette(rgba, findPalette(rgba, { maxColors: o.paletteColors }), width, height, { smooth });
+  }
   else pixels = rgba;
   let svg = wasm.vectorize(
     pixels instanceof Uint8Array ? pixels : new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength),

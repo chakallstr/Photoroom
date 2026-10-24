@@ -197,6 +197,16 @@ test('kayıpsız doğrulama tek piksellik bozulmayı da yakalar', () => {
   assert.match(verifyExact(svg, changed, w, h) ?? '', /piksel \(50, 50\)/);
 });
 
+test('çoğunluk filtresi tek piksellik gürültüyü siler, büyük bölgeyi korur', async () => {
+  const { modeFilter } = await import('../public/assets/vector.js');
+  const w = 9, h = 9, idx = new Uint8Array(w * h);           // hepsi renk 0
+  idx[4 * w + 4] = 1;                                         // ortada tek piksellik gürültü
+  for (let y = 0; y < h; y++) for (let x = 6; x < w; x++) idx[y * w + x] = 2; // sağda geniş şerit
+  const out = modeFilter(idx, w, h, 1, 3);
+  assert.equal(out[4 * w + 4], 0, 'gürültü silinmeli');
+  assert.equal(out[4 * w + 8], 2, 'şerit korunmalı');
+});
+
 test('Otsu eşiği iki tonlu görselde tonların arasına düşer', () => {
   const gray = new Uint8Array(1000).map((_, i) => (i < 600 ? 30 : 220));
   const t = otsuThreshold(gray);
